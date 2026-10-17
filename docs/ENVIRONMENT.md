@@ -25,32 +25,36 @@
 
 ## Environment B — GKE (primary)
 
-Основное окружение для benchmark-серий.
+Основное окружение для benchmark-серий. Снято 2026-10-17 (`k8s/debug/nvidia-smi.yaml`); как создать — `k8s/cluster/README.md`.
+
+Node OS: Container-Optimized OS, kernel 6.12.105+, containerd 2.2.7.
+
+Наблюдение: scale-up L4-ноды 0 → 1 вместе с установкой драйвера до запуска пода ≈ 1.5 мин (TriggeredScaleUp 06:50:33 → Scheduled 06:51:57 UTC). В `europe-west4` (все 3 зоны) L4 в тот день не было (`GCE out of resources`).
 
 ### Cluster
 
 | Параметр | Value | Как получить |
 |---|---|---|
-| Project | TBD | `gcloud config get-value project` |
-| Cluster name | TBD | `gcloud container clusters list` |
-| Location (zone/region) | TBD | `gcloud container clusters list` |
-| Mode (Standard / Autopilot) | TBD | `gcloud container clusters describe <cluster> --location <loc> --format='value(autopilot.enabled)'` |
-| GKE version | TBD | `kubectl version` / `gcloud container clusters describe … --format='value(currentMasterVersion)'` |
+| Project | `lora-sched-stand` | `gcloud config get-value project` |
+| Cluster name | `vllm-lab` | `gcloud container clusters list` |
+| Location (zone/region) | `us-central1-a` (zonal control plane); GPU pool spans `us-central1-a/b/c` | `gcloud container clusters list` |
+| Mode (Standard / Autopilot) | Standard | `gcloud container clusters describe <cluster> --location <loc> --format='value(autopilot.enabled)'` |
+| GKE version | `1.36.4-gke.1391002` (release channel: regular) | `kubectl version` / `gcloud container clusters describe … --format='value(currentMasterVersion)'` |
 
 ### GPU node pool
 
 | Параметр | Value | Как получить |
 |---|---|---|
-| Node pool name | TBD | `gcloud container node-pools list --cluster <cluster> --location <loc>` |
-| Machine type | TBD (L4 → `g2-standard-*`) | `kubectl get node <node> -L node.kubernetes.io/instance-type` |
-| GPU type | TBD (кандидат: **nvidia-l4**) | `kubectl get nodes -L cloud.google.com/gke-accelerator` |
-| GPU count per node | TBD | `kubectl describe node <node> \| grep nvidia.com/gpu` |
-| VRAM | TBD | `kubectl exec <pod> -- nvidia-smi --query-gpu=memory.total --format=csv` |
-| Driver install method | TBD (GKE-managed `gpu-driver-version=default/latest` или DaemonSet) | `gcloud container node-pools describe <pool> … --format='yaml(config.accelerators)'` |
-| Driver version | TBD | `kubectl exec <pod> -- nvidia-smi` |
-| CUDA version | TBD | `kubectl exec <pod> -- nvidia-smi` |
-| Taints | TBD | `kubectl describe node <node> \| grep Taints` |
-| Spot / on-demand | TBD | `kubectl get node <node> -L cloud.google.com/gke-spot` |
+| Node pool name | `l4-pool` (autoscaling 0–1, `--location-policy ANY`) | `gcloud container node-pools list --cluster <cluster> --location <loc>` |
+| Machine type | `g2-standard-8` (8 vCPU, 32 GB RAM), boot disk 200 GB pd-balanced | `kubectl get node <node> -L node.kubernetes.io/instance-type` |
+| GPU type | NVIDIA L4 (`nvidia-l4`), compute capability 8.9 | `kubectl get nodes -L cloud.google.com/gke-accelerator` |
+| GPU count per node | 1 | `kubectl describe node <node> \| grep nvidia.com/gpu` |
+| VRAM | 23034 MiB | `kubectl exec <pod> -- nvidia-smi --query-gpu=memory.total --format=csv` |
+| Driver install method | GKE-managed, `gpu-driver-version=latest` | `gcloud container node-pools describe <pool> … --format='yaml(config.accelerators)'` |
+| Driver version | 580.173.02 | `kubectl exec <pod> -- nvidia-smi` |
+| CUDA version | 13.0 (max supported by driver; runtime CUDA — из образа vLLM) | `kubectl exec <pod> -- nvidia-smi` |
+| Taints | `nvidia.com/gpu=present:NoSchedule` (toleration добавляется GKE автоматически) | `kubectl describe node <node> \| grep Taints` |
+| Spot / on-demand | on-demand | `kubectl get node <node> -L cloud.google.com/gke-spot` |
 
 ### Container
 
@@ -66,7 +70,7 @@
 
 ## Environment C — GPU VM (not used yet)
 
-Используется, только если Environment B мешает экспериментам (см. план, раздел 4). Структура таблицы — как в Environment B (GPU, driver, CUDA, Docker, image digest).
+Используется, только если Environment B мешает экспериментам. Структура таблицы — как в Environment B (GPU, driver, CUDA, Docker, image digest).
 
 ---
 

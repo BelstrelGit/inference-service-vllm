@@ -1,0 +1,21 @@
+# One-shot pod: prints GPU model, driver and CUDA version for docs/ENVIRONMENT.md.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nvidia-smi
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    cloud.google.com/gke-accelerator: nvidia-l4
+  containers:
+    - name: nvidia-smi
+      image: nvidia/cuda:12.4.1-base-ubuntu22.04
+      command: ["bash", "-c"]
+      args:
+        - |
+          nvidia-smi
+          echo "---"
+          nvidia-smi --query-gpu=name,memory.total,driver_version,compute_cap --format=csv
+      resources:
+        limits:
+          nvidia.com/gpu: 1
