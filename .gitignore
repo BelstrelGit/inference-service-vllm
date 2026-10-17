@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Local model weights / HF cache — never commit
+models/
+.cache/
+*.safetensors
+*.bin
+*.gguf
+
+# Secrets
+.env
+*.key
+hf_token*
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

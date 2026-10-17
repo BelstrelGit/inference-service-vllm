@@ -1,0 +1,40 @@
+[project]
+name = "inference-service-vllm"
+version = "0.1.0"
+description = "Hands-on LLM inference infrastructure lab: vLLM serving, async load generation, latency/throughput/KV-cache experiments"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Aggregation and plots; the vLLM server itself runs in a container on the GPU node, not locally.
+analysis = [
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "matplotlib>=3.9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
