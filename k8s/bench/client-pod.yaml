@@ -29,8 +29,9 @@ spec:
           rc=0
           python -m "$(cat /run-config/module)" $(cat /run-config/args) --out-dir /out || rc=$?
           echo "$rc" > /out/.exit_code
-          # stay alive so the results can be copied out with kubectl cp
-          sleep 3600
+          # Stay alive until scripts/run-bench.sh has copied /out and deleted the Pod: /out is an
+          # emptyDir, so the results disappear once the container exits.
+          sleep infinity
       env:
         - name: PYTHONUNBUFFERED
           value: "1"

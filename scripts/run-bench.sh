@@ -23,8 +23,28 @@ collect() {
   local rc
   rc="$(kubectl -n "$NS" exec "$POD" -- cat /out/.exit_code)"
   mkdir -p results/raw
-  kubectl -n "$NS" exec "$POD" -- tar -C /out --exclude=.exit_code -cf - . | tar -C results/raw -xf -
-  log "copied to results/raw/:"
+  # Pack inside the Pod, then stream the archive with retries and verify its checksum before
+  # unpacking: a dropped `kubectl exec` stream must not leave truncated files or lose the
+  # results (the Pod is deleted only after a verified copy).
+  kubectl -n "$NS" exec "$POD" -- tar -C /out --exclude=.exit_code -czf /tmp/results.tgz .
+  local want got tmp attempt
+  want="$(kubectl -n "$NS" exec "$POD" -- sha256sum /tmp/results.tgz | cut -d' ' -f1)"
+  tmp="$(mktemp)"
+  for attempt in 1 2 3 4 5; do
+    kubectl -n "$NS" exec "$POD" -- cat /tmp/results.tgz >"$tmp" || true
+    got="$(shasum -a 256 "$tmp" | cut -d' ' -f1)"
+    [ "$got" = "$want" ] && break
+    log "copy attempt $attempt failed (checksum mismatch), retrying"
+    sleep 5
+  done
+  if [ "$got" != "$want" ]; then
+    log "ERROR: could not copy results; Pod $POD kept, retry with: $0 --collect"
+    rm -f "$tmp"
+    return 1
+  fi
+  tar -C results/raw -xzf "$tmp"
+  rm -f "$tmp"
+  log "copied to results/raw/ (sha256 verified):"
   kubectl -n "$NS" exec "$POD" -- sh -c 'cd /out && find . -name "*.meta.json" | sort' | sed 's|^\./|  |'
   kubectl -n "$NS" delete pod "$POD" --wait=false >/dev/null
   log "client exit code $rc; pod $POD deleted"
