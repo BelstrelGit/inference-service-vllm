@@ -27,6 +27,7 @@ import random
 import sys
 import time
 import uuid
+import zlib
 from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from pathlib import Path
@@ -54,6 +55,10 @@ class Scenario:
     warmup_s: float = 0.0
     repeats: int = 1
     cooldown_s: float = 5.0  # pause between runs of a sweep (server drains)
+    # closed loop: worker i starts at i * stagger_s / concurrency. 0 = all start together, and
+    # with equal request lengths they stay in lockstep (every wave arrives as one burst).
+    # ~one E2E latency spreads arrivals evenly; offsets persist because lengths are equal.
+    stagger_s: float = 0.0
     endpoint: str = "completions"
     input_len: int = 512
     output_len: int = 128
@@ -90,6 +95,11 @@ class Scenario:
             raise ValueError("text prompts are pre-built: use num_requests, not duration_s")
         if self.endpoint == "chat" and self.prompt_format != "text":
             raise ValueError("chat endpoint needs prompt_format: text")
+        if self.stagger_s and self.mode != "closed":
+            raise ValueError("stagger_s applies to closed mode only")
+        if self.stagger_s > self.warmup_s:
+            # the staggered ramp-up must fall inside the warm-up, not the measure window
+            raise ValueError("stagger_s must not exceed warmup_s")
 
     def levels(self) -> list[tuple[str, int | float]]:
         if self.mode == "closed":
@@ -97,6 +107,16 @@ class Scenario:
             return [(f"c{v}", int(v)) for v in vals]
         vals = self.rate if isinstance(self.rate, list) else [self.rate]
         return [(f"r{v:g}", float(v)) for v in vals]
+
+
+def prompt_seed(seed: int, run_id: str) -> int:
+    """Distinct prompts for every run, reproducible from the meta.
+
+    The server's prefix cache outlives a run: if two runs (other level, other scenario, a
+    rerun) reused one prompt sequence, the later run would be served from cache. run_id
+    contains the start time and the level, so every run gets its own seed.
+    """
+    return zlib.crc32(f"{seed}:{run_id}".encode())
 
 
 class Run:
@@ -158,12 +178,14 @@ class Run:
         self.records.append(rec)
 
     async def closed_loop(self, client, out, concurrency: int) -> None:
-        async def worker() -> None:
+        async def worker(i: int) -> None:
+            if self.sc.stagger_s:
+                await asyncio.sleep(i * self.sc.stagger_s / concurrency)
             while (claim := self.claim(time.perf_counter())) is not None:
                 await self.one(client, out, *claim)
 
         self.t0 = time.perf_counter()
-        await asyncio.gather(*(worker() for _ in range(concurrency)))
+        await asyncio.gather(*(worker(i) for i in range(concurrency)))
 
     async def open_loop(self, client, out, rate: float) -> None:
         arrivals = random.Random(self.sc.seed)  # same arrival schedule for every repeat
@@ -191,6 +213,7 @@ async def execute(sc: Scenario, base_url: str, out_dir: Path, level: tuple, rep:
     conns = value if sc.mode == "closed" else sc.max_connections
     limits = httpx.Limits(max_connections=conns, max_keepalive_connections=conns)
     timeout = httpx.Timeout(sc.timeout_s, connect=10.0)
+    cpu0, wall0 = time.process_time(), time.perf_counter()
     async with (
         httpx.AsyncClient(base_url=base_url, timeout=timeout, limits=limits) as client,
         httpx.AsyncClient(base_url=base_url, timeout=10.0) as aux,  # metrics, tokenizer
@@ -201,7 +224,7 @@ async def execute(sc: Scenario, base_url: str, out_dir: Path, level: tuple, rep:
             sys.exit(f"cannot determine model from {base_url}/v1/models: {info}")
         spec = PromptSpec(
             input_len=sc.input_len, format=sc.prompt_format,
-            shared_prefix_len=sc.shared_prefix_len, seed=sc.seed * 1000 + rep,
+            shared_prefix_len=sc.shared_prefix_len, seed=prompt_seed(sc.seed, run_id),
         )  # fmt: skip
         run = Run(sc, run_id, model, PromptFactory(spec, aux, model), rep)
         if sc.prompt_format == "text":
@@ -222,6 +245,9 @@ async def execute(sc: Scenario, base_url: str, out_dir: Path, level: tuple, rep:
         if scraper:
             await scraper.stop()
 
+    # Share of one CPU core the client process used (load generator + metrics scraper).
+    # Near 1.0 = the client itself may be the bottleneck and inflate TTFT/ITL.
+    cpu_util = (time.process_time() - cpu0) / (time.perf_counter() - wall0)
     summary = summarize(run.records)
     meta = {
         "run_id": run_id,
@@ -229,6 +255,7 @@ async def execute(sc: Scenario, base_url: str, out_dir: Path, level: tuple, rep:
         "scenario": asdict(sc),
         "level": {"label": label, "mode": sc.mode, "value": value},
         "repeat": rep,
+        "prompt_seed": spec.seed,
         "started_at_utc": started.isoformat(),
         "finished_at_utc": datetime.now(UTC).isoformat(),
         "base_url": base_url,
@@ -239,6 +266,7 @@ async def execute(sc: Scenario, base_url: str, out_dir: Path, level: tuple, rep:
             "python": sys.version.split()[0],
             "httpx": httpx.__version__,
             "max_connections": conns,
+            "cpu_util": cpu_util,
         },
         "server_metrics": None
         if scraper is None
@@ -261,6 +289,7 @@ def print_run(meta: dict) -> None:
         f"  TTFT p50/p95 {_fmt(s['ttft_s']['p50'])}/{_fmt(s['ttft_s']['p95'])} ms"
         f"  TPOT p50 {_fmt(s['tpot_s']['p50'])} ms"
         + (f"  send-lag p99 {_fmt(s['send_lag_s']['p99'])} ms" if "send_lag_s" in s else "")
+        + f"  client CPU {meta['client']['cpu_util']:.0%}"
     )
 
 

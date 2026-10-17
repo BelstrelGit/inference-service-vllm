@@ -26,7 +26,7 @@ dirty=0
 log "pod $POD, model $MODEL"
 kx rm -rf "$LAB"
 kx mkdir -p "$LAB"
-tar -cf - client configs/scenarios | kubectl -n "$NS" exec -i "$POD" -- tar -C "$LAB" -xf -
+COPYFILE_DISABLE=1 tar --no-xattrs -cf - client/*.py configs/scenarios | kubectl -n "$NS" exec -i "$POD" -- tar -C "$LAB" -xf -
 kx python3 -c 'import httpx, yaml' || { echo "vLLM image lacks httpx/pyyaml" >&2; exit 1; }
 
 log "1/2 client.load"

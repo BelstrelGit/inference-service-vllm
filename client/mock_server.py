@@ -67,6 +67,9 @@ class MockState:
             lines = [
                 f"vllm:num_requests_running{lbl} {float(self.running)}",
                 f"vllm:num_requests_waiting{lbl} {float(self.waiting)}",
+                f'vllm:num_requests_waiting_by_reason{lbl[:-1]},reason="capacity"}} '
+                f"{float(self.waiting)}",
+                f'vllm:num_requests_waiting_by_reason{lbl[:-1]},reason="deferred"}} 0.0',
                 f"vllm:kv_cache_usage_perc{lbl} {self.running / self.cfg.max_num_seqs}",
                 f"vllm:num_preemptions_total{lbl} 0.0",
             ]

@@ -1,0 +1,16 @@
+# Gate 5: short pilot before the full Exp1 sweep, one short run per level.
+# Goals: rough location of saturation; whether the client itself becomes a bottleneck at high
+# concurrency (watch `client CPU` in the run line and `kubectl -n vllm top pod bench-client`,
+# compare client TTFT with server TTFT after analysis.aggregate).
+# 5 levels x (20 s warm-up + 45 s + 5 s cooldown) ≈ 6–8 min of GPU time.
+name: exp1_pilot
+series: l4-qwen7b-bf16-v1-pilot
+mode: closed
+concurrency: [1, 8, 32, 64, 128]
+duration_s: 45
+num_requests: null
+warmup_requests: 10
+warmup_s: 20
+repeats: 1
+input_len: 512
+output_len: 128

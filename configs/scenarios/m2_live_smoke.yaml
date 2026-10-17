@@ -1,0 +1,12 @@
+# Gate 1: first run of the M2 tooling against real vLLM. Not an experiment.
+# Checks that .jsonl / .server.jsonl / aggregation / plots look sane at c=1 and c=8.
+# ~3 min of GPU time.
+name: m2_live_smoke
+series: l4-qwen7b-bf16-smoke
+mode: closed
+concurrency: [1, 8]
+num_requests: 16
+warmup_requests: 4
+repeats: 1
+input_len: 512
+output_len: 128

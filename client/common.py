@@ -2,16 +2,30 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
+from pathlib import Path
 
 import httpx
+
+
+def code_sha256() -> str:
+    """Hash of the client code that actually ran: identifies the version even for dirty runs."""
+    h = hashlib.sha256()
+    for p in sorted(Path(__file__).parent.glob("*.py")):
+        h.update(p.name.encode() + b"\0" + p.read_bytes() + b"\0")
+    return h.hexdigest()
 
 
 def git_state() -> dict:
     # In-cluster runs have no .git: the launcher passes the state in via env.
     if commit := os.environ.get("CLIENT_GIT_COMMIT"):
-        return {"commit": commit, "dirty": os.environ.get("CLIENT_GIT_DIRTY") == "1"}
+        return {
+            "commit": commit,
+            "dirty": os.environ.get("CLIENT_GIT_DIRTY") == "1",
+            "client_code_sha256": code_sha256(),
+        }
 
     def run(*cmd: str) -> str:
         try:
@@ -22,6 +36,7 @@ def git_state() -> dict:
     return {
         "commit": run("git", "rev-parse", "HEAD"),
         "dirty": bool(run("git", "status", "--porcelain")),
+        "client_code_sha256": code_sha256(),
     }
 
 
