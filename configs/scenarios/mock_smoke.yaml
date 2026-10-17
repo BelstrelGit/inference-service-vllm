@@ -1,0 +1,14 @@
+# Local pipeline check against client.mock_server (no GPU). Seconds, not minutes.
+#   uv run python -m client.mock_server --port 8011 --max-num-seqs 4 --batch-slowdown 0.05
+#   uv run python -m client.load configs/scenarios/mock_smoke.yaml --base-url http://127.0.0.1:8011
+name: mock_smoke
+series: mock-dev
+mode: closed
+concurrency: [1, 4, 8]
+num_requests: 16
+warmup_requests: 2
+repeats: 2
+cooldown_s: 0
+input_len: 64
+output_len: 16
+metrics_interval_s: 0.25

@@ -13,8 +13,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
-import subprocess
 import sys
 import uuid
 from datetime import UTC, datetime
@@ -22,6 +20,7 @@ from pathlib import Path
 
 import httpx
 
+from client.common import git_state, server_info
 from client.records import RequestRecord, e2e, summarize, tpot, ttft
 from client.stream import send_request
 
@@ -36,34 +35,6 @@ def make_prompt(request_id: str) -> str:
     # Unique prefix per request: otherwise prefix caching would serve repeats from cache and
     # every request after the first would show an artificially low TTFT.
     return f"[{request_id}] {BASE_PROMPT}"
-
-
-def git_state() -> dict:
-    # In-cluster runs have no .git: the launcher passes the state in via env.
-    if commit := os.environ.get("CLIENT_GIT_COMMIT"):
-        return {"commit": commit, "dirty": os.environ.get("CLIENT_GIT_DIRTY") == "1"}
-
-    def run(*cmd: str) -> str:
-        try:
-            return subprocess.run(cmd, capture_output=True, text=True, check=True).stdout.strip()
-        except (OSError, subprocess.CalledProcessError):
-            return ""
-
-    return {
-        "commit": run("git", "rev-parse", "HEAD"),
-        "dirty": bool(run("git", "status", "--porcelain")),
-    }
-
-
-async def server_info(client: httpx.AsyncClient) -> dict:
-    info: dict = {}
-    for key, path in (("version", "/version"), ("models", "/v1/models")):
-        try:
-            r = await client.get(path)
-            info[key] = r.json() if r.status_code == 200 else {"http_status": r.status_code}
-        except (httpx.HTTPError, ValueError) as e:
-            info[key] = {"error": str(e)}
-    return info
 
 
 def _ms(v: float | None) -> str:

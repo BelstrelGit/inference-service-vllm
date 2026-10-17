@@ -2,7 +2,7 @@
 
 Hands-on research lab for **LLM inference infrastructure**: how concurrency, context length, output length and KV-cache pressure affect latency, throughput and GPU utilization of a vLLM server.
 
-> Status: **v0 — scope defined, no experiments run yet.** No numbers in this repository are claimed until the corresponding experiment report exists in `docs/experiments/`.
+> Status: **M1 done, M2 tooling ready.** vLLM runs on GKE (1 × L4), the first single-request measurement is in [EXP_000](docs/experiments/EXP_000_FIRST_REQUEST.md); the load generator is validated on a mock server, not yet on the GPU. No numbers are claimed without an experiment report in `docs/experiments/`.
 
 ## Research question
 
@@ -16,12 +16,13 @@ Python async load generator ──HTTP (OpenAI-compatible)──▶ vLLM server 
           └── raw JSONL per request                          └── /metrics (Prometheus)
 ```
 
-Phase 1 runs vLLM standalone (bare Pod on GKE or Colab). Phase 2 moves to a Kubernetes Deployment + Service with Prometheus/Grafana.
+vLLM runs as a Deployment + ClusterIP Service on GKE (`k8s/serving/`); the load generator runs in a separate Pod on the system node (`k8s/bench/`), so measurements do not go through a laptop or port-forward. Prometheus/Grafana come in M5.
 
 ## Planned experiments
 
 | ID | Question | Status |
 |---|---|---|
+| [Exp000](docs/experiments/EXP_000_FIRST_REQUEST.md) | First measured request (c=1): TTFT p50 81 ms, TPOT 56.6 ms on L4 | done |
 | Exp0 | Baseline at concurrency = 1, run-to-run variance | planned |
 | Exp1 | Concurrency scaling → saturation point | planned |
 | Exp2 | Context length → TTFT / KV pressure | planned |
@@ -31,11 +32,11 @@ Phase 1 runs vLLM standalone (bare Pod on GKE or Colab). Phase 2 moves to a Kube
 ## Repository layout
 
 ```text
-client/        load generator, request model, metrics collection
-experiments/   experiment runners
-analysis/      aggregation, percentiles, plots
-configs/       scenario YAML
-docker/ k8s/   container and Kubernetes manifests
+client/        load generator, request model, /metrics snapshots, mock vLLM server
+analysis/      aggregation, percentiles, plots, comparison with vllm bench serve
+configs/       scenario YAML (configs/scenarios/)
+k8s/           cluster notes, vLLM Deployment/Service, benchmark client Pod
+scripts/       smoke test, environment capture, in-cluster benchmark runner
 monitoring/    Prometheus / Grafana
 results/       raw (JSONL) → aggregated → figures
 docs/          concepts, protocol, environment, experiment reports
@@ -47,6 +48,7 @@ docs/          concepts, protocol, environment, experiment reports
 - [Inference concepts](docs/INFERENCE_CONCEPTS.md)
 - [Experiment protocol](docs/EXPERIMENT_PROTOCOL.md)
 - [Environment](docs/ENVIRONMENT.md)
+- [Load generator](docs/LOAD_GENERATOR.md)
 
 ## Local setup
 
@@ -55,4 +57,4 @@ uv sync --all-extras   # client + analysis + dev tools
 uv run pytest
 ```
 
-How to run vLLM and the first benchmark will be documented in M1.
+Running vLLM on GKE: [`k8s/standalone/README.md`](k8s/standalone/README.md) (first bring-up), [`k8s/serving/vllm.yaml`](k8s/serving/vllm.yaml) (Deployment + Service). Running benchmarks: [docs/LOAD_GENERATOR.md](docs/LOAD_GENERATOR.md).

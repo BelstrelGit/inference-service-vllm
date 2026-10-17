@@ -1,5 +1,5 @@
-# Load-generator Pod: runs client.run inside the cluster against the vLLM Service, so the
-# measured path is Pod -> Service -> Pod (no laptop, no port-forward).
+# Load-generator Pod: runs the client (client.load / client.run) inside the cluster against
+# the vLLM Service, so the measured path is Pod -> Service -> Pod (no laptop, no port-forward).
 # Code and run arguments come from ConfigMaps created by scripts/run-bench.sh; results stay
 # in /out until the script copies them out, then the Pod is deleted.
 apiVersion: v1
@@ -23,10 +23,11 @@ spec:
         - |
           set -e
           pip install --quiet --no-cache-dir --root-user-action=ignore \
-            httpx==0.28.1 httpcore==1.0.9 h11==0.16.0 anyio==4.15.1 certifi==2026.7.22 idna==3.20
+            httpx==0.28.1 httpcore==1.0.9 h11==0.16.0 anyio==4.15.1 certifi==2026.7.22 idna==3.20 \
+            pyyaml==6.0.3
           export CLIENT_GIT_COMMIT="$(cat /run-config/git_commit)" CLIENT_GIT_DIRTY="$(cat /run-config/git_dirty)"
           rc=0
-          python -m client.run $(cat /run-config/args) --out-dir /out || rc=$?
+          python -m "$(cat /run-config/module)" $(cat /run-config/args) --out-dir /out || rc=$?
           echo "$rc" > /out/.exit_code
           # stay alive so the results can be copied out with kubectl cp
           sleep 3600
@@ -35,11 +36,14 @@ spec:
           value: "1"
       resources:
         requests:
-          cpu: 500m
+          # system node is e2-standard-2: ~1.07 CPU left after GKE system pods
+          cpu: 900m
           memory: 256Mi
       volumeMounts:
         - name: client-code
           mountPath: /app/client
+        - name: scenarios
+          mountPath: /app/configs/scenarios
         - name: run-config
           mountPath: /run-config
         - name: out
@@ -48,6 +52,9 @@ spec:
     - name: client-code
       configMap:
         name: bench-client-code
+    - name: scenarios
+      configMap:
+        name: bench-scenarios
     - name: run-config
       configMap:
         name: bench-run-config

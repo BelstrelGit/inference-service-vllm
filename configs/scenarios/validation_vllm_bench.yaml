@@ -1,0 +1,13 @@
+# Validation of the load generator against `vllm bench serve` (EXPERIMENT_PROTOCOL.md, s. 8).
+# Run by scripts/validate-vs-vllm-bench.sh with the same parameters on both sides:
+# closed loop c=8, 200 requests, 512 -> 128 tokens, text prompts (vllm bench sends text too).
+name: validation
+series: l4-qwen7b-bf16-v1-validation
+mode: closed
+concurrency: 8
+num_requests: 200
+warmup_requests: 10
+repeats: 1
+input_len: 512
+output_len: 128
+prompt_format: text

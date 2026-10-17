@@ -1,7 +1,8 @@
 """One streaming request to an OpenAI-compatible server (vLLM), timed on the client.
 
 Timing points (perf_counter):
-  started_at      just before the request is sent
+  started_at      just before the first attempt is sent (retries stay inside the latency:
+                  the user waited for them too)
   first_chunk_at  first SSE `data:` chunk of any kind
   first_token_at  first chunk carrying generated text -> TTFT
   token_timestamps every chunk carrying generated text -> ITL
@@ -9,35 +10,52 @@ Timing points (perf_counter):
 
 Token counts come from the server's `usage` (stream_options.include_usage), never from
 counting chunks: one chunk is usually one token in vLLM, but that is not guaranteed.
+
+Retries: only failures that happened before any generated token (connection errors and
+HTTP 429/502/503/504), with exponential backoff. A stream that broke mid-generation is an
+error, not a retry: re-sending it would double-count work and hide the failure.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
+import random
 import time
 
 import httpx
 
 from client.records import RequestRecord
 
+RETRY_HTTP_STATUS = {429, 502, 503, 504}
+
+Prompt = str | list[int]
+
 
 def build_payload(
-    endpoint: str, model: str, prompt: str, max_tokens: int, ignore_eos: bool
+    endpoint: str,
+    model: str,
+    prompt: Prompt,
+    max_tokens: int,
+    ignore_eos: bool,
+    temperature: float = 0.0,
 ) -> tuple[str, dict]:
     payload: dict = {
         "model": model,
         "max_tokens": max_tokens,
-        "temperature": 0,
+        "temperature": temperature,
         "stream": True,
         "stream_options": {"include_usage": True},
     }
     if ignore_eos:
         payload["ignore_eos"] = True  # vLLM extension: always generate exactly max_tokens
     if endpoint == "chat":
+        if not isinstance(prompt, str):
+            raise ValueError("chat endpoint needs a text prompt")
         payload["messages"] = [{"role": "user", "content": prompt}]
         return "/v1/chat/completions", payload
     if endpoint == "completions":
-        payload["prompt"] = prompt
+        payload["prompt"] = prompt  # text or a list of token ids
         return "/v1/completions", payload
     raise ValueError(f"unknown endpoint: {endpoint}")
 
@@ -48,24 +66,25 @@ def _chunk_text(endpoint: str, choice: dict) -> str:
     return choice.get("text") or ""
 
 
-async def send_request(
-    client: httpx.AsyncClient,
-    record: RequestRecord,
-    model: str,
-    prompt: str,
-    ignore_eos: bool = True,
-) -> RequestRecord:
-    """Fill `record` in place with timings, usage and status; never raises on request errors."""
-    path, payload = build_payload(record.endpoint, model, prompt, record.max_tokens, ignore_eos)
-    record.started_at_unix = time.time()
-    record.started_at = time.perf_counter()
+def _reset(record: RequestRecord) -> None:
+    record.first_chunk_at = record.first_token_at = record.completed_at = None
+    record.prompt_tokens = record.output_tokens = record.finish_reason = None
+    record.http_status = record.error = None
+    record.status = "error"
+    record.token_timestamps = []
+
+
+async def _attempt(
+    client: httpx.AsyncClient, record: RequestRecord, path: str, payload: dict
+) -> bool:
+    """One HTTP attempt. Returns True if it failed in a way that is safe to retry."""
     try:
         async with client.stream("POST", path, json=payload) as resp:
             record.http_status = resp.status_code
             if resp.status_code != 200:
                 body = (await resp.aread()).decode(errors="replace")
                 record.error = body[:500]
-                return record
+                return resp.status_code in RETRY_HTTP_STATUS
             async for line in resp.aiter_lines():
                 now = time.perf_counter()
                 if not line.startswith("data:"):
@@ -90,10 +109,13 @@ async def send_request(
     except httpx.TimeoutException as e:
         record.status = "timeout"
         record.error = f"{type(e).__name__}: {e}"
-        return record
+        return False
+    except (httpx.ConnectError, httpx.RemoteProtocolError) as e:
+        record.error = f"{type(e).__name__}: {e}"
+        return record.first_token_at is None
     except (httpx.HTTPError, json.JSONDecodeError) as e:
         record.error = f"{type(e).__name__}: {e}"
-        return record
+        return False
 
     if record.completed_at is None:
         record.error = "stream ended without [DONE]"
@@ -101,4 +123,36 @@ async def send_request(
         record.error = "no usage in stream"
     else:
         record.status = "ok"
+    return False
+
+
+async def send_request(
+    client: httpx.AsyncClient,
+    record: RequestRecord,
+    model: str,
+    prompt: Prompt,
+    ignore_eos: bool = True,
+    temperature: float = 0.0,
+    retries: int = 0,
+    backoff_s: float = 0.5,
+    rng: random.Random | None = None,
+) -> RequestRecord:
+    """Fill `record` in place with timings, usage and status; never raises on request errors.
+
+    Backoff before retry k (1-based): backoff_s * 2**(k-1) * uniform(0.5, 1.5) ("jitter", so
+    clients that failed together do not retry in lockstep).
+    """
+    path, payload = build_payload(
+        record.endpoint, model, prompt, record.max_tokens, ignore_eos, temperature
+    )
+    rng = rng or random.Random()
+    record.started_at_unix = time.time()
+    record.started_at = time.perf_counter()
+    for attempt in range(retries + 1):
+        if attempt:
+            _reset(record)
+            record.retry_count = attempt
+            await asyncio.sleep(backoff_s * 2 ** (attempt - 1) * rng.uniform(0.5, 1.5))
+        if not await _attempt(client, record, path, payload):
+            break
     return record

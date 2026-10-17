@@ -1,0 +1,15 @@
+# Exp1b — open loop: Poisson arrivals at a fixed rate, independent of server speed.
+# Pick rates around the saturation point found by exp1_concurrency; above capacity the
+# waiting queue and TTFT must grow during the run (see analysis.plot timeseries).
+name: exp1_open_rate
+series: l4-qwen7b-bf16-v1
+mode: open
+rate: [0.5, 1, 2, 4, 8]
+duration_s: 120
+num_requests: null
+warmup_requests: 10
+warmup_s: 30
+repeats: 3
+input_len: 512
+output_len: 128
+timeout_s: 600

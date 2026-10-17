@@ -1,0 +1,16 @@
+# Exp1 — concurrency scaling (closed loop).
+# Question: where does the curve go underutilized -> efficient -> saturated -> queueing?
+# KV budget is 53,696 tokens; 640 tokens per request -> ~83 requests fit, so c=128 should
+# show queueing on KV (waiting > 0) and c<=64 should not.
+# 8 levels x 3 repeats x (30 s warm-up + 90 s + 5 s cooldown) ≈ 50 min of GPU time.
+name: exp1_concurrency
+series: l4-qwen7b-bf16-v1
+mode: closed
+concurrency: [1, 2, 4, 8, 16, 32, 64, 128]
+duration_s: 90
+num_requests: null
+warmup_requests: 10
+warmup_s: 30
+repeats: 3
+input_len: 512
+output_len: 128
