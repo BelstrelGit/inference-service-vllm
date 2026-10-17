@@ -10,6 +10,12 @@ during the run, restricted to the measurement window:
   counters / histogram _sum,_count: (last snapshot <= window end) - (last snapshot <= start)
   gauges   : mean and max over snapshots inside the window
 levels.csv = median over repeats per level, plus min/max of the headline metrics.
+
+output_token_throughput (from client.records.summarize) = measure-phase output tokens / window.
+It is biased when the window is short relative to E2E: at the start the server still works on
+warm-up requests whose tokens are not counted, and at the end the load drains. Hence also
+  steady_output_tok_s = all output tokens (any phase) emitted between the first and the last
+                        measure request sent / that interval (full load, no drain)
 """
 
 from __future__ import annotations
@@ -23,7 +29,10 @@ from pathlib import Path
 from client.records import RequestRecord, summarize
 from client.server_metrics import metric
 
-HEADLINE = ("output_token_throughput", "ttft_p50_ms", "ttft_p95_ms", "tpot_p50_ms", "e2e_p95_ms")
+HEADLINE = (
+    "output_token_throughput", "steady_output_tok_s",
+    "ttft_p50_ms", "ttft_p95_ms", "tpot_p50_ms", "e2e_p95_ms",
+)  # fmt: skip
 
 
 def load_records(path: Path) -> list[RequestRecord]:
@@ -45,6 +54,15 @@ def window(records: list[RequestRecord]) -> tuple[float, float] | None:
         return None
     offset = m[0].started_at_unix - m[0].started_at
     return min(r.started_at for r in m) + offset, max(ends) + offset
+
+
+def steady_output_tok_s(records: list[RequestRecord]) -> float | None:
+    sends = [r.started_at for r in records if r.phase == "measure"]
+    if len(sends) < 2 or max(sends) <= min(sends):
+        return None
+    a, b = min(sends), max(sends)
+    n = sum(a <= t <= b for r in records for t in (r.token_timestamps or []))
+    return n / (b - a)
 
 
 def server_stats(snaps: list[dict], win: tuple[float, float] | None) -> dict:
@@ -90,6 +108,16 @@ def server_stats(snaps: list[dict], win: tuple[float, float] | None) -> dict:
         ("kv_usage", "vllm:kv_cache_usage_perc"),
     ):
         out[f"server_{col}_mean"], out[f"server_{col}_max"] = gauge(name)
+    # vLLM 0.30: reason="capacity" (no scheduling capacity: KV blocks, max_num_seqs, token
+    # budget are NOT distinguished) or "deferred" (LoRA budget, KV transfer, blocked)
+    for reason in ("capacity", "deferred"):
+        vals = [
+            v
+            for s in inside
+            for k, v in s.items()
+            if k.startswith("vllm:num_requests_waiting_by_reason{") and f'reason="{reason}"' in k
+        ]
+        out[f"server_waiting_{reason}_max"] = max(vals) if vals else None
     return out
 
 
@@ -125,6 +153,8 @@ def run_row(meta_path: Path) -> dict:
     row["input_len"] = sc.get("input_len")
     row["output_len"] = sc.get("output_len") or meta.get("workload", {}).get("max_tokens")
     row.update(flatten(summarize(records)))
+    row["steady_output_tok_s"] = steady_output_tok_s(records)
+    row["client_cpu_util"] = meta.get("client", {}).get("cpu_util")
     snaps = load_snapshots(meta_path.with_name(f"{run_id}.server.jsonl"))
     row.update(server_stats(snaps, window(records)))
     return row
@@ -172,12 +202,15 @@ def write_csv(path: Path, rows: list[dict]) -> None:
 def markdown(levels: list[dict]) -> str:
     cols = [
         ("level", "level", None), ("repeats", "n", None),
-        ("output_token_throughput", "out tok/s", 1), ("request_throughput", "req/s", 2),
+        ("output_token_throughput", "out tok/s", 1), ("steady_output_tok_s", "steady tok/s", 1),
+        ("request_throughput", "req/s", 2),
         ("ttft_p50_ms", "TTFT p50", 1), ("ttft_p95_ms", "TTFT p95", 1),
         ("tpot_p50_ms", "TPOT p50", 1), ("e2e_p95_ms", "E2E p95", 0),
         ("error_rate", "err", 3), ("server_waiting_max", "wait max", 0),
         ("server_kv_usage_max", "KV max", 2), ("server_preemptions", "preempt", 0),
     ]  # fmt: skip
+    if len({r["scenario"] for r in levels}) > 1:
+        cols.insert(0, ("scenario", "scenario", None))
     lines = ["| " + " | ".join(h for _, h, _ in cols) + " |", "|" + "---|" * len(cols)]
     for r in levels:
         cells = []
@@ -213,6 +246,11 @@ def main() -> None:
     a = p.parse_args()
     out_dir, levels = aggregate(a.raw_dir, a.out_root)
     print(markdown(levels))
+    # Prompts are random and unique per run: hits mean prompts were reused (or a shared prefix).
+    for lv in levels:
+        hit = lv.get("server_prefix_hit_rate")
+        if hit is not None and hit > 0.05:
+            print(f"WARNING: {lv['level']}: prefix cache hit rate {hit:.1%} - check prompt reuse")
     print(f"\nwrote {out_dir}/runs.csv, levels.csv, levels.md")
 
 

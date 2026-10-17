@@ -62,7 +62,48 @@ def _level_axis(ax, runs: list[dict]) -> None:
 
 
 def sweep(agg_dir: Path, out_dir: Path) -> list[Path]:
-    runs = load_runs(agg_dir)
+    """One set of figures per scenario; with several scenarios also overlays of the headline
+    metrics (e.g. exp1_pilot vs exp1_pilot_stagger)."""
+    by_scenario: dict[str, list[dict]] = {}
+    for r in load_runs(agg_dir):
+        by_scenario.setdefault(r["scenario"], []).append(r)
+    paths = []
+    for runs in by_scenario.values():
+        paths += _sweep_one(agg_dir, out_dir, runs)
+    if len(by_scenario) > 1:
+        paths += _compare(agg_dir, out_dir, by_scenario)
+    return paths
+
+
+def _compare(agg_dir: Path, out_dir: Path, by_scenario: dict[str, list[dict]]) -> list[Path]:
+    paths = []
+    for name, col, ylabel in (
+        ("throughput", "output_token_throughput", "output tok/s"),
+        ("steady_throughput", "steady_output_tok_s", "steady output tok/s"),
+        ("ttft_p50", "ttft_p50_ms", "TTFT p50, ms"),
+        ("ttft_p95", "ttft_p95_ms", "TTFT p95, ms"),
+        ("tpot_p50", "tpot_p50_ms", "TPOT p50, ms"),
+    ):
+        fig, ax = plt.subplots(figsize=(6, 4))
+        for scenario, runs in by_scenario.items():
+            xs, med, err = by_level(runs, col)
+            if xs:
+                ax.errorbar(xs, med, yerr=err, marker="o", capsize=3, label=scenario)
+        _level_axis(ax, next(iter(by_scenario.values())))
+        if col.startswith("ttft"):
+            ax.set_yscale("log")
+        ax.set_ylabel(ylabel)
+        ax.legend()
+        fig.suptitle(f"{agg_dir.name}: {', '.join(by_scenario)}", fontsize=9)
+        fig.tight_layout()
+        p = out_dir / f"compare_{name}.png"
+        fig.savefig(p, dpi=130)
+        plt.close(fig)
+        paths.append(p)
+    return paths
+
+
+def _sweep_one(agg_dir: Path, out_dir: Path, runs: list[dict]) -> list[Path]:
     r0 = runs[0]
     title = f"{agg_dir.name} ({r0['scenario']}, in={r0['input_len']} out={r0['output_len']})"
     paths = []
@@ -76,7 +117,11 @@ def sweep(agg_dir: Path, out_dir: Path) -> list[Path]:
         paths.append(p)
 
     for name, cols, ylabel in (
-        ("throughput", [("output_token_throughput", "output tok/s")], "tokens/s"),
+        (
+            "throughput",
+            [("output_token_throughput", "output tok/s"), ("steady_output_tok_s", "steady")],
+            "tokens/s",
+        ),
         ("ttft", [("ttft_p50_ms", "TTFT p50"), ("ttft_p95_ms", "TTFT p95")], "ms"),
         ("tpot", [("tpot_p50_ms", "TPOT p50"), ("tpot_p95_ms", "TPOT p95")], "ms"),
         (

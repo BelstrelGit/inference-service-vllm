@@ -22,6 +22,7 @@ TOLERANCE = 0.10
 
 # (label, our summary path, vllm bench key)
 PAIRS = [
+    ("TTFT mean, ms", ("ttft_s", "mean", 1000), "mean_ttft_ms"),
     ("TTFT p50, ms", ("ttft_s", "p50", 1000), "median_ttft_ms"),
     ("TTFT p95, ms", ("ttft_s", "p95", 1000), "p95_ttft_ms"),
     ("TPOT p50, ms", ("tpot_s", "p50", 1000), "median_tpot_ms"),
