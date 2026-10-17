@@ -2,7 +2,7 @@
 
 Hands-on research lab for **LLM inference infrastructure**: how concurrency, context length, output length and KV-cache pressure affect latency, throughput and GPU utilization of a vLLM server.
 
-> Status: **M1 done, M2 tooling ready.** vLLM runs on GKE (1 × L4), the first single-request measurement is in [EXP_000](docs/experiments/EXP_000_FIRST_REQUEST.md); the load generator is validated on a mock server, not yet on the GPU. No numbers are claimed without an experiment report in `docs/experiments/`.
+> Status: **M1 done, M2 done, M3 started.** vLLM runs on GKE (1 × L4); the first single-request measurement is in [EXP_000](docs/experiments/EXP_000_FIRST_REQUEST.md); the load generator is validated against `vllm bench serve` ([report](docs/experiments/VALIDATION_VLLM_BENCH.md)). No numbers are claimed without an experiment report in `docs/experiments/`.
 
 ## Research question
 
@@ -23,8 +23,9 @@ vLLM runs as a Deployment + ClusterIP Service on GKE (`k8s/serving/`); the load 
 | ID | Question | Status |
 |---|---|---|
 | [Exp000](docs/experiments/EXP_000_FIRST_REQUEST.md) | First measured request (c=1): TTFT p50 81 ms, TPOT 56.6 ms on L4 | done |
-| Exp0 | Baseline at concurrency = 1, run-to-run variance | planned |
-| Exp1 | Concurrency scaling → saturation point | planned |
+| [Validation](docs/experiments/VALIDATION_VLLM_BENCH.md) | Load generator vs `vllm bench serve` (c=8, 512→128): means agree within 0–3.5% | done |
+| [Exp0](docs/experiments/EXP_001_BASELINE.md) | Baseline at concurrency = 1: TTFT p50 170 ms, TPOT 56.6 ms, run-to-run spread < 1% | done |
+| [Exp1](docs/experiments/EXP_002_CONCURRENCY.md) | Concurrency scaling: 17 → 485 tok/s, saturation at c ≈ 96 by KV cache (~86 sequences fit) | done |
 | Exp2 | Context length → TTFT / KV pressure | planned |
 | Exp3 | Output length → prefill-heavy vs decode-heavy | planned |
 | Exp4 | KV-cache pressure → preemption | planned |

@@ -1,13 +1,20 @@
-# Exp1 — concurrency scaling (closed loop).
+# Exp1 — concurrency scaling (closed loop), docs/experiments/EXP_002_CONCURRENCY.md.
 # Question: where does the curve go underutilized -> efficient -> saturated -> queueing?
-# KV budget is 53,696 tokens; 640 tokens per request -> ~83 requests fit, so c=128 should
-# show queueing on KV (waiting > 0) and c<=64 should not.
-# 8 levels x 3 repeats x (30 s warm-up + 90 s + 5 s cooldown) ≈ 50 min of GPU time.
+# Rough estimate: KV budget 53,696 tokens / (512 + 128) ≈ 84 full sequences; 48 and 96 bracket
+# it more densely. The actual cause of waiting/preemption must be determined from measured
+# scheduler and KV metrics (num_requests_waiting[_by_reason], kv_cache_usage_perc,
+# num_preemptions).
+# stagger_s: the pilot showed that with simultaneous starts and equal lengths the workers move in
+# synchronized waves, which multiplies TTFT 3–5x at c=8–64 (exp1_pilot vs exp1_pilot_stagger).
+# Exp1 measures the steady uniform stream; stagger_s ≈ E2E at c≤64 (7–18 s), <= warmup_s.
+# duration_s 120: E2E reaches ~41 s at c=128, a 45 s pilot window held about one cycle.
+# 10 levels x 3 repeats x (30 s warm-up + 120 s + drain 7–25 s + 5 s cooldown) ≈ 85 min.
 name: exp1_concurrency
 series: l4-qwen7b-bf16-v1
 mode: closed
-concurrency: [1, 2, 4, 8, 16, 32, 64, 128]
-duration_s: 90
+concurrency: [1, 2, 4, 8, 16, 32, 48, 64, 96, 128]
+stagger_s: 20
+duration_s: 120
 num_requests: null
 warmup_requests: 10
 warmup_s: 30
