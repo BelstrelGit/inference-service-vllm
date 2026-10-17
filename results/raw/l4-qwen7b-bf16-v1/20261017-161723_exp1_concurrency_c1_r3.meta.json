@@ -1,0 +1,154 @@
+{
+  "run_id": "20261017-161723_exp1_concurrency_c1_r3",
+  "series_id": "l4-qwen7b-bf16-v1",
+  "scenario": {
+    "name": "exp1_concurrency",
+    "series": "l4-qwen7b-bf16-v1",
+    "mode": "closed",
+    "concurrency": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32,
+      48,
+      64,
+      96,
+      128
+    ],
+    "rate": null,
+    "num_requests": null,
+    "duration_s": 120,
+    "warmup_requests": 10,
+    "warmup_s": 30,
+    "repeats": 3,
+    "cooldown_s": 5.0,
+    "stagger_s": 20,
+    "endpoint": "completions",
+    "input_len": 512,
+    "output_len": 128,
+    "prompt_format": "token_ids",
+    "shared_prefix_len": 0,
+    "ignore_eos": true,
+    "temperature": 0.0,
+    "timeout_s": 300.0,
+    "retries": 0,
+    "backoff_s": 0.5,
+    "seed": 0,
+    "metrics_interval_s": 1.0,
+    "max_connections": 1024,
+    "model": null,
+    "notes": "",
+    "extra": {}
+  },
+  "level": {
+    "label": "c1",
+    "mode": "closed",
+    "value": 1
+  },
+  "repeat": 3,
+  "prompt_seed": 2835221944,
+  "started_at_utc": "2026-10-17T16:17:23.240615+00:00",
+  "finished_at_utc": "2026-10-17T16:20:43.154576+00:00",
+  "base_url": "http://vllm.vllm.svc.cluster.local:8000",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "server": {
+    "version": {
+      "version": "0.30.0"
+    },
+    "models": {
+      "object": "list",
+      "data": [
+        {
+          "id": "Qwen/Qwen2.5-7B-Instruct",
+          "object": "model",
+          "created": 1792253843,
+          "owned_by": "vllm",
+          "root": "Qwen/Qwen2.5-7B-Instruct",
+          "parent": null,
+          "max_model_len": 8192,
+          "permission": [
+            {
+              "id": "modelperm-aa0929963d0ad64e",
+              "object": "model_permission",
+              "created": 1792253843,
+              "allow_create_engine": false,
+              "allow_sampling": true,
+              "allow_logprobs": true,
+              "allow_search_indices": false,
+              "allow_view": true,
+              "allow_fine_tuning": false,
+              "organization": "*",
+              "group": null,
+              "is_blocking": false
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "client": {
+    "git": {
+      "commit": "3aa72307517234259fb24d0da39f500e19a7edbe",
+      "dirty": true,
+      "client_code_sha256": "8ee75e8ff0d0cc6f401de2543821f6baab13dcdabfa6be147bcf594df4d62523"
+    },
+    "python": "3.12.15",
+    "httpx": "0.28.1",
+    "max_connections": 1,
+    "cpu_util": 0.016824273969285493
+  },
+  "server_metrics": {
+    "snapshots": 200,
+    "errors": 0
+  },
+  "summary": {
+    "requests": 17,
+    "ok": 17,
+    "errors": 0,
+    "error_rate": 0.0,
+    "timeouts": 0,
+    "retries": 0,
+    "duration_s": 125.21080790999986,
+    "request_throughput": 0.13577102714822678,
+    "output_token_throughput": 17.378691474973028,
+    "total_token_throughput": 86.89345737486515,
+    "ttft_s": {
+      "n": 17,
+      "mean": 0.17979863211760805,
+      "p50": 0.17287476500496268,
+      "p90": 0.1820722375981859,
+      "p95": 0.20288623619999263,
+      "p99": 0.2666173600376351,
+      "max": 0.2825501409970457
+    },
+    "tpot_s": {
+      "n": 17,
+      "mean": 0.05656638915841211,
+      "p50": 0.056620305976404176,
+      "p90": 0.05662517167086297,
+      "p95": 0.05662651690078109,
+      "p99": 0.056630086926626515,
+      "max": 0.05663097943308787
+    },
+    "e2e_s": {
+      "n": 17,
+      "mean": 7.363730055235946,
+      "p50": 7.362250069003494,
+      "p90": 7.3720227212019385,
+      "p95": 7.372729167602666,
+      "p99": 7.3736102415245846,
+      "max": 7.373830510005064
+    },
+    "itl_s": {
+      "n": 2121,
+      "mean": 0.057525315896281716,
+      "p50": 0.056620515999384224,
+      "p90": 0.057027312002901454,
+      "p95": 0.05716316900361562,
+      "p99": 0.058671008801320576,
+      "max": 0.17056284999853233
+    }
+  }
+}
