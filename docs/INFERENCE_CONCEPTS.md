@@ -87,7 +87,7 @@ KV bytes per token = 2 (K и V) × num_layers × num_kv_heads × head_dim × byt
 → 3.5 GiB / 128 KiB               ≈ ~28k tokens на ВСЕ одновременные запросы
 ```
 
-То есть, например, ~7 запросов по 4k токенов (prompt + output) **одновременно**. Для Qwen2.5-7B (56 KiB/token, KV ≈ 4–5 GiB) выходит ~80k tokens. Для 3B модели KV cache помещается заметно больше, и упереться в него труднее.
+То есть, например, ~7 запросов по 4k токенов (prompt + output) **одновременно**. Для Qwen2.5-7B (56 KiB/token) на нашей L4 фактически вышло **2.87 GiB → 53,696 tokens**, max concurrency 6.55× при 8192 (vLLM 0.30.0): накладные расходы помимо весов (non-torch память, пиковые активации, CUDA graphs) ≈ 2.7 GiB, больше грубой оценки. Для 3B модели KV cache помещается заметно больше, и упереться в него труднее.
 
 Реальное число vLLM пишет в лог при старте (что-то вроде `GPU KV cache size: N tokens` / `Maximum concurrency for X tokens per request`). **Это число — первое, что записываем в `ENVIRONMENT.md`.**
 
@@ -180,7 +180,7 @@ mean скрывает хвосты, поэтому всегда p50 / p90 / p95 
 | KV cache заполнение | `vllm:kv_cache_usage_perc` |
 | Preemption | `vllm:num_preemptions` (counter), `vllm:request_num_preemptions` (histogram, на request) |
 | TTFT | `vllm:time_to_first_token_seconds` (histogram) |
-| ITL / TPOT | `vllm:inter_token_latency_seconds` (ранее `vllm:time_per_output_token_seconds`) |
+| ITL / TPOT | `vllm:inter_token_latency_seconds` (ITL, ранее `vllm:time_per_output_token_seconds`); TPOT на запрос — `vllm:request_time_per_output_token_seconds` |
 | Queue time | `vllm:request_queue_time_seconds` |
 | Prefill / decode time | `vllm:request_prefill_time_seconds`, `vllm:request_decode_time_seconds` |
 | E2E | `vllm:e2e_request_latency_seconds` |

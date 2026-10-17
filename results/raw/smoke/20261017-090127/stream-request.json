@@ -1,0 +1,15 @@
+{
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Explain in two sentences what a KV cache is in LLM inference."
+    }
+  ],
+  "max_tokens": 64,
+  "temperature": 0,
+  "stream": true,
+  "stream_options": {
+    "include_usage": true
+  }
+}

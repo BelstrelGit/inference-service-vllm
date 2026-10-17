@@ -1,0 +1,82 @@
+# M1: minimal standalone vLLM server on one L4 GPU (bare Pod, no controller).
+#
+# Pinned:
+#   image  vllm/vllm-openai:v0.30.0 (multi-arch index digest; linux/amd64 manifest
+#          sha256:5f5e535216848d0c52159c8c13a0af04be5f6fe1a84e79914300610796f76d40), CUDA 13.0.2
+#   model  Qwen/Qwen2.5-7B-Instruct @ a09a35458c702b33eeacc393d103063234e8bc28 (model + tokenizer)
+# Explicit server args: bf16, max-model-len 8192, gpu-memory-utilization 0.90, seed 0.
+# Everything else stays at v0.30.0 defaults and is captured from the startup log (scripts/collect-env.sh).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vllm
+  namespace: vllm
+  labels:
+    app: vllm
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    cloud.google.com/gke-accelerator: nvidia-l4
+  terminationGracePeriodSeconds: 30
+  containers:
+    - name: vllm
+      image: docker.io/vllm/vllm-openai:v0.30.0@sha256:8a69ffad015f138d7170c4ddc429e230a3bc1c1719f67e14324749df200a4b90
+      # Image entrypoint is `vllm serve`; the first arg is the model.
+      args:
+        - Qwen/Qwen2.5-7B-Instruct
+        - --revision=a09a35458c702b33eeacc393d103063234e8bc28
+        - --tokenizer-revision=a09a35458c702b33eeacc393d103063234e8bc28
+        - --dtype=bfloat16
+        - --max-model-len=8192
+        - --gpu-memory-utilization=0.90
+        - --seed=0
+        - --host=0.0.0.0
+        - --port=8000
+      env:
+        - name: HF_HOME
+          value: /models/hf
+        - name: VLLM_NO_USAGE_STATS
+          value: "1"
+        - name: DO_NOT_TRACK
+          value: "1"
+      ports:
+        - name: http
+          containerPort: 8000
+      resources:
+        requests:
+          cpu: "6"
+          memory: 24Gi
+          nvidia.com/gpu: 1
+        limits:
+          # No memory limit for the first run: avoid an unexplained OOMKill during model load.
+          # Revisit once actual usage is known.
+          nvidia.com/gpu: 1
+      # First start downloads the image (~8.7 GB compressed) and weights (~15.2 GB),
+      # then loads/compiles: allow up to 20 min. No livenessProbe in M1.
+      startupProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 10
+        failureThreshold: 120
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 10
+        failureThreshold: 3
+      volumeMounts:
+        - name: model-cache
+          mountPath: /models
+        - name: dshm
+          mountPath: /dev/shm
+  volumes:
+    # Lives as long as the Pod: deleting the Pod means re-downloading the model.
+    - name: model-cache
+      emptyDir:
+        sizeLimit: 40Gi
+    # PyTorch shared memory; upper bound, not a reservation.
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 8Gi
