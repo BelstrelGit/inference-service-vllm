@@ -45,6 +45,7 @@ trap 'kill $LOGS_PID 2>/dev/null || true' EXIT
 until kubectl -n "$NS" exec "$POD" -- test -f /out/.exit_code 2>/dev/null; do sleep 2; done
 sleep 1
 kill $LOGS_PID 2>/dev/null || true
+wait $LOGS_PID 2>/dev/null || true # reap it, so bash does not print "Terminated"
 rc="$(kubectl -n "$NS" exec "$POD" -- cat /out/.exit_code)"
 
 mkdir -p "results/raw/$series"
