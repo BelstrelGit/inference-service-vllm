@@ -142,7 +142,7 @@ Closed-loop сам себя «тормозит» (coordinated omission): при 
 results/
   raw/<series_id>/<run_id>.jsonl          # request records, по одному на строку
   raw/<series_id>/<run_id>.meta.json      # config snapshot (раздел 2)
-  raw/<series_id>/<run_id>.server.jsonl   # snapshots vLLM /metrics + GPU
+  raw/<series_id>/<run_id>.server.jsonl   # snapshots vLLM /metrics (GPU-метрики: DCGM, позже)
   aggregated/<series_id>/...              # CSV / Parquet
   figures/<series_id>/...                 # PNG / SVG
 ```
@@ -161,17 +161,24 @@ results/
 | `run_id` | str | id run |
 | `scenario` | str | имя сценария |
 | `phase` | str | `warmup` / `measure` |
-| `started_at` | float | время отправки (monotonic, s) |
-| `first_token_at` | float \| null | время первого токена в стриме |
-| `completed_at` | float \| null | время завершения |
+| `endpoint` | str | `completions` / `chat` |
+| `max_tokens` | int | запрошенное число output tokens |
+| `started_at` | float | время отправки первой попытки (perf_counter, s); ретраи входят в latency |
+| `scheduled_at` | float \| null | open-loop: когда запрос должен был уйти по расписанию; `started_at − scheduled_at` = отставание генератора |
+| `first_chunk_at` | float \| null | первый SSE chunk любого вида (в chat — chunk только с `role`) |
+| `first_token_at` | float \| null | первый chunk с непустым текстом — точка TTFT |
+| `completed_at` | float \| null | получен `data: [DONE]` |
+| `started_at_unix` | float | wall clock момента `started_at` (для привязки к server metrics) |
+| `finish_reason` | str \| null | `length` / `stop` |
 | `prompt_tokens` | int | input tokens (из usage ответа сервера) |
 | `output_tokens` | int | output tokens (из usage ответа сервера) |
 | `status` | str | `ok` / `error` / `timeout` |
 | `http_status` | int \| null | HTTP status code |
 | `error` | str \| null | текст ошибки |
-| `retry_count` | int | число ретраев |
-| `token_timestamps` | list[float] \| null | *optional*, для ITL-распределения |
+| `retry_count` | int | число ретраев (только до первого токена: ошибки соединения, HTTP 429/502/503/504; экспоненциальный backoff с jitter) |
+| `token_timestamps` | list[float] | время каждого chunk с текстом, для ITL-распределения |
 
+Реализация: `client/records.py` (схема и формулы), `client/stream.py` (точки замера).
 Все времена для вычисления интервалов — `time.monotonic()`/`perf_counter()`; wall-clock (UTC) пишется отдельно только для привязки к server metrics.
 
 ---
