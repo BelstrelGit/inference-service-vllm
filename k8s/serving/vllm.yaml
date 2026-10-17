@@ -26,6 +26,9 @@ spec:
       labels:
         app: vllm
     spec:
+      # Without this, the Service named `vllm` injects VLLM_PORT=tcp://<ip>:8000 (and other
+      # VLLM_* service-link env vars), which vLLM reads as its own config and fails to start.
+      enableServiceLinks: false
       nodeSelector:
         cloud.google.com/gke-accelerator: nvidia-l4
       terminationGracePeriodSeconds: 30
