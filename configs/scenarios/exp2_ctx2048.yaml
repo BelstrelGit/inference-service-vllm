@@ -1,0 +1,15 @@
+# Exp2 — context length, docs/experiments/EXP_003_CONTEXT_LENGTH.md.
+# Exp2B: KV boundary 53,696 / (2048 + 128..64) ≈ 25 sequences; levels bracket it.
+# c=1 doubles as the Exp2A point.
+name: exp2_ctx2048
+series: l4-qwen7b-bf16-v1
+mode: closed
+concurrency: [1, 8, 16, 20, 24, 28, 32]
+stagger_s: 20
+duration_s: 120
+num_requests: null
+warmup_requests: 10
+warmup_s: 30
+repeats: 3
+input_len: 2048
+output_len: 128

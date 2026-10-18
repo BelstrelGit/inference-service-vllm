@@ -1,0 +1,14 @@
+# Exp2 — context length, docs/experiments/EXP_003_CONTEXT_LENGTH.md.
+# Exp2A: prefill / TTFT at c=1, shortest prompt.
+name: exp2_ctx128
+series: l4-qwen7b-bf16-v1
+mode: closed
+concurrency: 1
+stagger_s: 20
+duration_s: 120
+num_requests: null
+warmup_requests: 10
+warmup_s: 30
+repeats: 3
+input_len: 128
+output_len: 128

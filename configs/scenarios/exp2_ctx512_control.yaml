@@ -1,0 +1,15 @@
+# Exp2 — context length, docs/experiments/EXP_003_CONTEXT_LENGTH.md.
+# Control: same point as Exp0 / Exp1 c=1 (TTFT p50 ~172 ms, TPOT ~56.6 ms); checks that the
+# environment has not changed since 2026-10-17.
+name: exp2_ctx512_control
+series: l4-qwen7b-bf16-v1
+mode: closed
+concurrency: 1
+stagger_s: 20
+duration_s: 120
+num_requests: null
+warmup_requests: 10
+warmup_s: 30
+repeats: 1
+input_len: 512
+output_len: 128
