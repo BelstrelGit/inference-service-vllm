@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import statistics
 from pathlib import Path
 
@@ -63,6 +64,15 @@ def steady_output_tok_s(records: list[RequestRecord]) -> float | None:
     a, b = min(sends), max(sends)
     n = sum(a <= t <= b for r in records for t in (r.token_timestamps or []))
     return n / (b - a)
+
+
+def kv_capacity_tokens(samples: dict[str, float]) -> int | None:
+    for k in samples:
+        if k.startswith("vllm:cache_config_info{"):
+            m = re.search(r'kv_cache_size_tokens="(\d+)"', k)
+            if m:
+                return int(m.group(1))
+    return None
 
 
 def server_stats(snaps: list[dict], win: tuple[float, float] | None) -> dict:
@@ -108,6 +118,18 @@ def server_stats(snaps: list[dict], win: tuple[float, float] | None) -> dict:
         ("kv_usage", "vllm:kv_cache_usage_perc"),
     ):
         out[f"server_{col}_mean"], out[f"server_{col}_max"] = gauge(name)
+    # KV tokens held = usage x pool size; per running sequence it can be compared with the
+    # expected footprint (Exp2: prompt + ~output/2). Pool size comes from the
+    # kv_cache_size_tokens label of vllm:cache_config_info (vLLM 0.30).
+    cap = kv_capacity_tokens(b)
+    kv, running = out["server_kv_usage_mean"], out["server_running_mean"]
+    out["server_kv_capacity_tokens"] = cap
+    out["server_kv_tokens_mean"] = kv * cap if kv is not None and cap else None
+    out["server_kv_tokens_per_running"] = (
+        out["server_kv_tokens_mean"] / running
+        if out["server_kv_tokens_mean"] is not None and running
+        else None
+    )
     # vLLM 0.30: reason="capacity" (no scheduling capacity: KV blocks, max_num_seqs, token
     # budget are NOT distinguished) or "deferred" (LoRA budget, KV transfer, blocked)
     for reason in ("capacity", "deferred"):

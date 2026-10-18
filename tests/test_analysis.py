@@ -29,6 +29,19 @@ def test_server_stats_window_deltas_and_gauges():
     assert s["server_gen_tok_s"] == pytest.approx(200 / 2)
     assert s["server_waiting_max"] == 4 and s["server_waiting_mean"] == pytest.approx(3)
     assert s["server_snapshots_in_window"] == 2
+    assert s["server_kv_tokens_per_running"] is None  # no cache_config_info -> no KV accounting
+
+
+def test_server_stats_kv_tokens_from_cache_config_info():
+    info = 'vllm:cache_config_info{block_size="16",kv_cache_size_tokens="53696"}'
+    snaps = [snap(t, num_requests_running=r, kv_cache_usage_perc=kv)
+             for t, r, kv in ((0, 10, 0.7), (1, 10, 0.8), (2, 12, 0.9))]  # fmt: skip
+    for s in snaps:
+        s["samples"][info] = 1.0
+    s = server_stats(snaps, (0.5, 2.5))
+    assert s["server_kv_capacity_tokens"] == 53696
+    assert s["server_kv_tokens_mean"] == pytest.approx(0.85 * 53696)
+    assert s["server_kv_tokens_per_running"] == pytest.approx(0.85 * 53696 / 11)
 
 
 def test_steady_throughput_counts_all_phases_between_measure_sends():
