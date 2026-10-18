@@ -26,7 +26,7 @@ vLLM runs as a Deployment + ClusterIP Service on GKE (`k8s/serving/`); the load 
 | [Validation](docs/experiments/VALIDATION_VLLM_BENCH.md) | Load generator vs `vllm bench serve` (c=8, 512→128): means agree within 0–3.5% | done |
 | [Exp0](docs/experiments/EXP_001_BASELINE.md) | Baseline at concurrency = 1: TTFT p50 170 ms, TPOT 56.6 ms, run-to-run spread < 1% | done |
 | [Exp1](docs/experiments/EXP_002_CONCURRENCY.md) | Concurrency scaling: 17 → 485 tok/s, KV-limited saturation begins around c ≈ 96 (~86 sequences running) | done |
-| Exp2 | Context length → TTFT / KV pressure | planned |
+| [Exp2](docs/experiments/EXP_003_CONTEXT_LENGTH.md) | Context length (128–7168 → 128): prefill ≈ 0.28 ms/token; saturation shifts to c ≈ 48 / 25 / 12 for P = 1024 / 2048 / 4096 at ~50k KV tokens, as predicted from KV capacity | done |
 | Exp3 | Output length → prefill-heavy vs decode-heavy | planned |
 | Exp4 | KV-cache pressure → preemption | planned |
 
