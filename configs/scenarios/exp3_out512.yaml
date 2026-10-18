@@ -1,0 +1,17 @@
+# Exp3 — output length, docs/experiments/EXP_004_OUTPUT_LENGTH.md (draft).
+# Exp3B decode-heavy: 512 -> 512. KV boundary 53,696 / (512 + 256) ≈ 70 sequences, plateau
+# expected at ~63–66 (90–95% of the estimate, as in Exp2); levels bracket it.
+# E2E at the plateau ~60–80 s: window 240 s holds >= 3 cycles, stagger_s ≈ E2E <= warmup_s.
+name: exp3_out512
+series: l4-qwen7b-bf16-v1
+mode: closed
+concurrency: [1, 32, 48, 56, 64, 72, 80]
+stagger_s: 80
+duration_s: 240
+num_requests: null
+warmup_requests: 3
+warmup_s: 90
+repeats: 3
+input_len: 512
+output_len: 512
+timeout_s: 600
