@@ -1,6 +1,6 @@
 # Exp2 — context length, docs/experiments/EXP_003_CONTEXT_LENGTH.md.
-# Exp2B: KV boundary 53,696 / (4096 + 128..64) ≈ 13 sequences; levels bracket it; prefill takes
-# 2 iterations at max-num-batched-tokens 2048. c=1 doubles as the Exp2A point.
+# Exp2B: KV boundary 53,696 / (4096 + 128..64) ≈ 13 sequences; levels bracket it; prefill needs
+# at least 2 chunks at max-num-batched-tokens 2048. c=1 doubles as the Exp2A point.
 name: exp2_ctx4096
 series: l4-qwen7b-bf16-v1
 mode: closed

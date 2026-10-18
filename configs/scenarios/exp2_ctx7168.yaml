@@ -1,5 +1,5 @@
 # Exp2 — context length, docs/experiments/EXP_003_CONTEXT_LENGTH.md.
-# Exp2A long-context probe: 7168 + 128 = 7296 <= max-model-len 8192; prefill takes 4 iterations
+# Exp2A long-context probe: 7168 + 128 = 7296 <= max-model-len 8192; prefill needs at least 4 chunks
 # at max-num-batched-tokens 2048.
 name: exp2_ctx7168
 series: l4-qwen7b-bf16-v1
