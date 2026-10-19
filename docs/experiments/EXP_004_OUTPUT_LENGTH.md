@@ -60,6 +60,31 @@
 - грубое положение границы при O=512; при O=32 сравнить TPOT на c=8, 32, 64 с таблицей в Hypothesis: если форма кривой другая, пересмотреть сетку;
 - нет ли таймаутов при длинных E2E и очереди (`timeout_s` 600).
 
+Уровни пилота: O=32 при c = 8, 32, 64, 80 (окно 60 с), O=512 при c = 64, 72, 80 (окно 240 с, как в полном прогоне: проверяется именно оно). Около 30 мин GPU. Полный прогон запускается, только если форма кривых и E2E разумны; если нет, сначала правится дизайн.
+
+Перед пилотом нужно проверить, что запущен базовый сервер. В репозитории есть оверлеи Exp4 (`k8s/exp4/`), а Exp3 должен идти на той же конфигурации, что Exp1 и Exp2: KV bf16, 53,696 токенов, без `--num-gpu-blocks-override` и `--kv-cache-dtype`.
+
+```bash
+kubectl apply -f k8s/serving/vllm.yaml
+kubectl -n vllm rollout status deploy/vllm --timeout=20m
+# аргументы Deployment: вывод должен быть пустым
+kubectl -n vllm get deploy vllm -o jsonpath='{.spec.template.spec.containers[0].args}' \
+    | tr ',' '\n' | grep -E 'num-gpu-blocks-override|kv-cache-dtype'
+# сам сервер: kv_cache_size_tokens="53696", cache_dtype="auto"
+kubectl -n vllm exec deploy/vllm -- python3 -c \
+    "import urllib.request as u; print(u.urlopen('http://localhost:8000/metrics').read().decode())" \
+    | grep '^vllm:cache_config_info' | tr ',' '\n' | grep -E 'kv_cache_size_tokens|cache_dtype|num_gpu_blocks_override'
+
+scripts/run-bench.sh load configs/scenarios/exp3_out32.yaml --set series=l4-qwen7b-bf16-v1-pilot \
+    --set repeats=1 --set duration_s=60 --set 'concurrency=[8,32,64,80]'
+scripts/run-bench.sh load configs/scenarios/exp3_out512.yaml --set series=l4-qwen7b-bf16-v1-pilot \
+    --set repeats=1 --set 'concurrency=[64,72,80]'
+uv run python -m analysis.aggregate results/raw/l4-qwen7b-bf16-v1-pilot
+uv run --extra analysis python -m analysis.plot output results/aggregated/l4-qwen7b-bf16-v1-pilot
+```
+
+После агрегации `server_kv_capacity_tokens` = 53,696 в `runs.csv` пилота ещё раз подтверждает размер пула, уже по записям прогонов.
+
 ## Setup
 
 - Load mode: closed loop
