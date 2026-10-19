@@ -1,0 +1,16 @@
+# Exp4 — KV pressure, docs/experiments/EXP_005_KV_PRESSURE.md (draft).
+# Server: kubectl apply -k k8s/exp4/fp8-kv3356 (FP8 KV, pool held at 3356 blocks = 53,696 tokens).
+# Same levels as exp2_ctx2048: any difference from Exp2 comes from the KV dtype / attention backend,
+# not from capacity.
+name: exp4_fp8_kv3356
+series: l4-qwen7b-fp8kv-kv3356-v1
+mode: closed
+concurrency: [1, 8, 16, 20, 24, 28, 32]
+stagger_s: 20
+duration_s: 120
+num_requests: null
+warmup_requests: 10
+warmup_s: 30
+repeats: 3
+input_len: 2048
+output_len: 128

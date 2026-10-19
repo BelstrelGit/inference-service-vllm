@@ -1,0 +1,15 @@
+# Exp4 — KV pressure, docs/experiments/EXP_005_KV_PRESSURE.md (draft).
+# Server: k8s/serving/vllm.yaml (baseline). Drift control: repeats Exp2 points P=2048 c=1, 24, 28
+# (running 23.2-24.2 at the plateau, queue from c=28) in the same series as Exp2.
+name: exp4_control
+series: l4-qwen7b-bf16-v1
+mode: closed
+concurrency: [1, 24, 28]
+stagger_s: 20
+duration_s: 120
+num_requests: null
+warmup_requests: 10
+warmup_s: 30
+repeats: 3
+input_len: 2048
+output_len: 128

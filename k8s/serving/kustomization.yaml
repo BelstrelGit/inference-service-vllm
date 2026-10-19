@@ -1,0 +1,4 @@
+# Base for the Exp4 overlays in k8s/exp4/ (kubectl apply -k). The baseline server is
+# still applied directly: kubectl apply -f k8s/serving/vllm.yaml.
+resources:
+  - vllm.yaml

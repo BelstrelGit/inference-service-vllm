@@ -1,0 +1,17 @@
+# Exp4 — KV pressure, docs/experiments/EXP_005_KV_PRESSURE.md (draft).
+# Server: kubectl apply -k k8s/exp4/fp8 (FP8 KV, profiled pool, expected ~105-107k tokens; the
+# exact value is in the startup log and in cache_config_info). Boundary ~50 sequences, plateau
+# expected ~46-49; levels to be re-centred after the pilot. E2E up to ~40 s, so stagger_s 40.
+# c=1 is taken from exp4_fp8_kv3356 (pool size does not matter at c=1).
+name: exp4_fp8
+series: l4-qwen7b-fp8kv-v1
+mode: closed
+concurrency: [16, 32, 40, 44, 48, 52, 60]
+stagger_s: 40
+duration_s: 120
+num_requests: null
+warmup_requests: 10
+warmup_s: 40
+repeats: 3
+input_len: 2048
+output_len: 128

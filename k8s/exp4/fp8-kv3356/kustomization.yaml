@@ -1,0 +1,17 @@
+# Exp4 (docs/experiments/EXP_005_KV_PRESSURE.md): baseline server + --kv-cache-dtype=fp8, --num-gpu-blocks-override=3356.
+# FP8 KV at the baseline pool size (3356 blocks = 53,696 tokens): isolates the
+# dtype / attention-backend effect from the capacity effect.
+#   kubectl apply -k k8s/exp4/fp8-kv3356
+resources:
+  - ../../serving
+patches:
+  - target:
+      kind: Deployment
+      name: vllm
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --kv-cache-dtype=fp8
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --num-gpu-blocks-override=3356

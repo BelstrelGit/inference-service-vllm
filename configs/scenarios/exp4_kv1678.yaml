@@ -1,0 +1,16 @@
+# Exp4 — KV pressure, docs/experiments/EXP_005_KV_PRESSURE.md (draft).
+# Server: kubectl apply -k k8s/exp4/kv1678 (num-gpu-blocks-override 1678 = 26,848 tokens, 0.5x).
+# KV boundary 26,848 / 2118 ≈ 12.7 sequences, plateau expected ~11.5-12.2; c=1 checks that the
+# override leaves TTFT / TPOT unchanged.
+name: exp4_kv1678
+series: l4-qwen7b-bf16-kv1678-v1
+mode: closed
+concurrency: [1, 8, 10, 12, 14, 16, 20]
+stagger_s: 20
+duration_s: 120
+num_requests: null
+warmup_requests: 10
+warmup_s: 30
+repeats: 3
+input_len: 2048
+output_len: 128

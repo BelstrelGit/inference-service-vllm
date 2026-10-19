@@ -1,0 +1,13 @@
+# Exp4 (docs/experiments/EXP_005_KV_PRESSURE.md): baseline server + --kv-cache-dtype=fp8.
+# FP8 KV with the profiled pool (~2x the bf16 tokens at the same memory budget).
+#   kubectl apply -k k8s/exp4/fp8
+resources:
+  - ../../serving
+patches:
+  - target:
+      kind: Deployment
+      name: vllm
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --kv-cache-dtype=fp8

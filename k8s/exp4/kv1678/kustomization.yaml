@@ -1,0 +1,13 @@
+# Exp4 (docs/experiments/EXP_005_KV_PRESSURE.md): baseline server + --num-gpu-blocks-override=1678.
+# KV pool cut to 0.5x the profiled 3356 blocks (26,848 tokens); compute unchanged.
+#   kubectl apply -k k8s/exp4/kv1678
+resources:
+  - ../../serving
+patches:
+  - target:
+      kind: Deployment
+      name: vllm
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --num-gpu-blocks-override=1678
