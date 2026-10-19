@@ -68,6 +68,49 @@ gcloud container clusters resize $CLUSTER --node-pool default-pool --num-nodes 1
 
 Rough cost (verify in the GCP pricing calculator): e2-standard-2 ≈ $0.07/h (≈ $55/month if always on), g2-standard-8 + L4 ≈ $0.9/h.
 
+## Experiment session checklist
+
+The GPU is shared with another project (`GPUS_ALL_REGIONS = 1`): before a session check that no other g2 / GPU node is running (`gcloud compute instances list --project $PROJECT`). Load runs execute inside the cluster (`scripts/run-bench.sh`), but the script waits on `kubectl exec` from the laptop: keep the laptop awake (`caffeinate -i` on macOS) or re-attach with `scripts/run-bench.sh --collect`.
+
+Start:
+
+```bash
+gcloud container clusters resize $CLUSTER --node-pool default-pool --num-nodes 1 --project $PROJECT --zone $ZONE --quiet
+gcloud container clusters get-credentials $CLUSTER --project $PROJECT --zone $ZONE
+kubectl apply -f k8s/serving/vllm.yaml            # the GPU request makes the autoscaler add the L4 node
+kubectl -n vllm rollout status deploy/vllm --timeout=30m
+scripts/check-server.sh 53696                     # baseline: no KV args, bf16 KV, 53,696 tokens
+```
+
+Switching the server (Exp4 overlays): one `apply` replaces the pod (strategy Recreate). Check the pool before every scenario.
+
+| Server | Apply | `check-server.sh` | Scenarios |
+|---|---|---|---|
+| baseline | `kubectl apply -f k8s/serving/vllm.yaml` | `53696` | Exp1–Exp3, `exp4_control` |
+| 0.5× pool | `kubectl apply -k k8s/exp4/kv1678` | `26848` | `exp4_kv1678` |
+| 0.75× pool | `kubectl apply -k k8s/exp4/kv2517` | `40272` | `exp4_kv2517` |
+| FP8, same pool | `kubectl apply -k k8s/exp4/fp8-kv3356` | `53696` | `exp4_fp8_kv3356` |
+| FP8, full pool | `kubectl apply -k k8s/exp4/fp8` | no argument: record the size | `exp4_fp8` |
+
+```bash
+kubectl apply -k k8s/exp4/kv1678
+kubectl -n vllm rollout status deploy/vllm --timeout=20m
+scripts/check-server.sh 26848
+scripts/run-bench.sh load configs/scenarios/exp4_kv1678.yaml
+```
+
+The order of runs and the pilot commands are in each experiment doc (`docs/experiments/EXP_00X_*.md`, Pilot / Setup).
+
+End:
+
+```bash
+kubectl delete -f k8s/serving/vllm.yaml           # removes the Deployment of any variant
+gcloud container clusters resize $CLUSTER --node-pool l4-pool --num-nodes 0 --project $PROJECT --zone $ZONE --quiet
+gcloud container clusters resize $CLUSTER --node-pool default-pool --num-nodes 0 --project $PROJECT --zone $ZONE --quiet
+gcloud compute instances list --project $PROJECT  # expect no vllm-lab nodes
+gcloud compute disks list --project $PROJECT      # expect no leftover node disks
+```
+
 ## Verify GPU
 
 ```bash

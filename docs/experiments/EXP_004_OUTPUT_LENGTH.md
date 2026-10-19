@@ -67,13 +67,8 @@
 ```bash
 kubectl apply -f k8s/serving/vllm.yaml
 kubectl -n vllm rollout status deploy/vllm --timeout=20m
-# аргументы Deployment: вывод должен быть пустым
-kubectl -n vllm get deploy vllm -o jsonpath='{.spec.template.spec.containers[0].args}' \
-    | tr ',' '\n' | grep -E 'num-gpu-blocks-override|kv-cache-dtype'
-# сам сервер: kv_cache_size_tokens="53696", cache_dtype="auto"
-kubectl -n vllm exec deploy/vllm -- python3 -c \
-    "import urllib.request as u; print(u.urlopen('http://localhost:8000/metrics').read().decode())" \
-    | grep '^vllm:cache_config_info' | tr ',' '\n' | grep -E 'kv_cache_size_tokens|cache_dtype|num_gpu_blocks_override'
+# аргументы Deployment без KV-оверрайдов, cache_dtype="auto", пул 53,696 (иначе exit 1)
+scripts/check-server.sh 53696
 
 scripts/run-bench.sh load configs/scenarios/exp3_out32.yaml --set series=l4-qwen7b-bf16-v1-pilot \
     --set repeats=1 --set duration_s=60 --set 'concurrency=[8,32,64,80]'

@@ -106,20 +106,21 @@
   - Сессия 1 (bf16): control, kv1678, kv2517 — 17 уровней × 3, ~2.8 ч, плюс 2 перезапуска сервера и пилот, около 3.2 ч.
   - Сессия 2 (FP8): fp8-kv3356 и fp8 — 14 уровней × 3, ~2.5 ч, плюс пилот, около 2.9 ч.
   - Сессии независимы, у каждой своя конфигурация сервера. Вариант дешевле: убрать `kv2517` (~1.2 ч). Тогда по пулу остаются три точки: 0.5×, 1× и ~2×.
-- Команды (сессия 1; сессия 2 так же, с `fp8-kv3356` и `fp8`):
+- Команды (сессия 1; сессия 2 так же, с `fp8-kv3356` и `fp8`: `scripts/check-server.sh 53696` и без аргумента — для `fp8` пул записывается, а не сверяется):
   ```bash
   kubectl apply -f k8s/serving/vllm.yaml
   kubectl -n vllm rollout status deploy/vllm --timeout=20m
+  scripts/check-server.sh 53696
   scripts/run-bench.sh load configs/scenarios/exp4_control.yaml
 
   kubectl apply -k k8s/exp4/kv1678          # Recreate: старый pod удаляется, новый стартует
   kubectl -n vllm rollout status deploy/vllm --timeout=20m
-  kubectl -n vllm logs deploy/vllm | grep -i -E "num_gpu_blocks|kv cache|backend"
+  scripts/check-server.sh 26848               # пул, dtype и backend из лога; exit 1, если пул другой
   scripts/run-bench.sh load configs/scenarios/exp4_kv1678.yaml
 
   kubectl apply -k k8s/exp4/kv2517
   kubectl -n vllm rollout status deploy/vllm --timeout=20m
-  kubectl -n vllm logs deploy/vllm | grep -i -E "num_gpu_blocks|kv cache|backend"
+  scripts/check-server.sh 40272               # пул, dtype и backend из лога; exit 1, если пул другой
   scripts/run-bench.sh load configs/scenarios/exp4_kv2517.yaml
 
   for s in l4-qwen7b-bf16-v1 l4-qwen7b-bf16-kv1678-v1 l4-qwen7b-bf16-kv2517-v1; do
