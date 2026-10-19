@@ -5,6 +5,7 @@
         results/raw/<series>/<run_id>.server.jsonl
     uv run --extra analysis python -m analysis.plot context results/aggregated/<series>
     uv run --extra analysis python -m analysis.plot output results/aggregated/<series>
+    uv run --extra analysis python -m analysis.plot kv results/aggregated/<series> ...
 
 sweep       median over repeats, error bars = min..max across repeats:
               throughput vs level, TTFT p50/p95 vs level, TPOT p50/p95 vs level,
@@ -23,6 +24,12 @@ output      Exp3, closed-loop runs with P=512 for every output length in the ser
               TPOT p50 vs the indirect estimate d(n) + n * prefill / out, d(n) from out=128 runs
               without preemption, held flat outside their range of n
               (diagonal = match; an estimate, not a measurement)
+kv          Exp4, closed-loop runs with P=2048 across several series (one per KV pool size /
+            KV dtype), output in results/figures/kv/:
+              vs concurrency per series: running mean (dashed: K / (P + out/2)), steady tok/s,
+              TPOT p50, TTFT p50, KV usage mean, preemptions per 100 measured requests;
+              vs pool size K: plateau running (max over levels; line K / (P + out/2), dotted
+              0.93 x) and max steady tok/s
 Output: results/figures/<series>/*.png
 """
 
@@ -245,6 +252,12 @@ def context(agg_dir: Path, out_dir: Path) -> list[Path]:
     return paths
 
 
+def _preemptions_per_100(r: dict) -> float | None:
+    # Per measured request rather than per run: runs differ in window and request count.
+    pre, req = _num(r.get("server_preemptions")), _num(r.get("requests"))
+    return 100 * pre / req if pre is not None and req else None
+
+
 def output(agg_dir: Path, out_dir: Path, prompt_len: int = 512) -> list[Path]:
     runs = [r for r in load_runs(agg_dir)
             if r["mode"] == "closed" and _num(r.get("input_len")) == prompt_len]  # fmt: skip
@@ -252,8 +265,7 @@ def output(agg_dir: Path, out_dir: Path, prompt_len: int = 512) -> list[Path]:
     for r in runs:
         tok_s = _num(r.get("steady_output_tok_s"))
         r["steady_req_s"] = tok_s / olen(r) if tok_s is not None else None
-        pre, req = _num(r.get("server_preemptions")), _num(r.get("requests"))
-        r["preemptions_per_100_req"] = 100 * pre / req if pre is not None and req else None
+        r["preemptions_per_100_req"] = _preemptions_per_100(r)
     lengths = sorted({olen(r) for r in runs})
     c1 = [r for r in runs if _num(r["value"]) == 1]
     prefill_ms = _median_by(c1, lambda r: 0, "server_prefill_mean_ms").get(0)
@@ -342,6 +354,79 @@ def output(agg_dir: Path, out_dir: Path, prompt_len: int = 512) -> list[Path]:
     return paths
 
 
+def kv(agg_dirs: list[Path], out_dir: Path, prompt_len: int = 2048) -> list[Path]:
+    series = []
+    for agg_dir in agg_dirs:
+        runs = [r for r in load_runs(agg_dir)
+                if r["mode"] == "closed" and _num(r.get("input_len")) == prompt_len]  # fmt: skip
+        for r in runs:
+            r["preemptions_per_100_req"] = _preemptions_per_100(r)
+        cap = _median_by(runs, lambda r: 0, "server_kv_capacity_tokens").get(0)
+        out = _median_by(runs, lambda r: 0, "output_len").get(0)
+        if runs and cap and out:
+            series.append((agg_dir.name, runs, cap, prompt_len + out / 2))
+    series.sort(key=lambda s: s[2])
+    paths = []
+
+    def save(fig, name: str) -> None:
+        fig.suptitle(f"KV pool size, P={prompt_len}: {', '.join(s[0] for s in series)}", fontsize=8)
+        fig.tight_layout()
+        p = out_dir / f"kv_{name}.png"
+        fig.savefig(p, dpi=130)
+        plt.close(fig)
+        paths.append(p)
+
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+    panels = (
+        ("server_running_mean", "running mean (dashed: K / (P + out/2))"),
+        ("steady_output_tok_s", "steady output tok/s"),
+        ("tpot_p50_ms", "TPOT p50, ms"),
+        ("ttft_p50_ms", "TTFT p50, ms"),
+        ("server_kv_usage_mean", "KV usage mean"),
+        ("preemptions_per_100_req", "preemptions per 100 requests"),
+    )
+    for ax, (col, ylabel) in zip(axes.flat, panels, strict=True):
+        for name, runs, cap, footprint in series:
+            xs, med, err = by_level(runs, col)
+            if not xs:
+                continue
+            line = ax.errorbar(xs, med, yerr=err, marker="o", capsize=3,
+                               label=f"{name} (K={cap:.0f})")  # fmt: skip
+            if col == "server_running_mean":
+                ax.axhline(cap / footprint, ls="--", lw=1, color=line[0].get_color())
+        if col == "ttft_p50_ms":
+            ax.set_yscale("log")
+        ax.set_xlabel("concurrency")
+        ax.set_xscale("log", base=2)
+        ax.set_ylabel(ylabel)
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=7)
+    save(fig, "sweep")
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.5))
+    for name, runs, cap, _ in series:
+        for ax, col in ((ax1, "server_running_mean"), (ax2, "steady_output_tok_s")):
+            _, med, _ = by_level(runs, col)
+            if med:
+                ax.scatter([cap], [max(med)], s=30, label=name, zorder=3)
+    if series:
+        ks = [0, max(s[2] for s in series) * 1.05]
+        footprint = series[0][3]
+        ax1.plot(ks, [k / footprint for k in ks], color="grey", lw=1, label="K / (P + out/2)")
+        ax1.plot(ks, [0.93 * k / footprint for k in ks], color="grey", lw=1, ls=":",
+                 label="0.93 x")  # fmt: skip
+    ax1.set_ylabel("plateau running (max of level medians)")
+    ax2.set_ylabel("max steady output tok/s (max of level medians)")
+    for ax in (ax1, ax2):
+        ax.set_xlabel("KV pool K, tokens")
+        ax.set_xlim(left=0)
+        ax.set_ylim(bottom=0)
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=7)
+    save(fig, "capacity")
+    return paths
+
+
 def timeseries(server_jsonl: Path, out_dir: Path) -> Path:
     snaps = [json.loads(line) for line in server_jsonl.read_text().splitlines() if line.strip()]
     t0 = snaps[0]["t_unix"]
@@ -370,14 +455,24 @@ def timeseries(server_jsonl: Path, out_dir: Path) -> Path:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    p.add_argument("kind", choices=["sweep", "timeseries", "context", "output"])
-    p.add_argument("path", type=Path, help="results/aggregated/<series> or a .server.jsonl file")
+    p.add_argument("kind", choices=["sweep", "timeseries", "context", "output", "kv"])
+    p.add_argument(
+        "paths", type=Path, nargs="+",
+        help="results/aggregated/<series> (several for kv) or a .server.jsonl file",
+    )  # fmt: skip
     p.add_argument("--out-root", type=Path, default=Path("results/figures"))
     a = p.parse_args()
-    series = a.path.parent.name if a.kind == "timeseries" else a.path.name
-    out_dir = a.out_root / series
+    if a.kind != "kv" and len(a.paths) != 1:
+        p.error(f"{a.kind} takes one path")
+    a.path = a.paths[0]
+    if a.kind == "kv":
+        out_dir = a.out_root / "kv"
+    else:
+        out_dir = a.out_root / (a.path.parent.name if a.kind == "timeseries" else a.path.name)
     out_dir.mkdir(parents=True, exist_ok=True)
-    if a.kind == "timeseries":
+    if a.kind == "kv":
+        paths = kv(a.paths, out_dir)
+    elif a.kind == "timeseries":
         paths = [timeseries(a.path, out_dir)]
     else:
         paths = {"sweep": sweep, "context": context, "output": output}[a.kind](a.path, out_dir)
