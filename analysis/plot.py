@@ -4,6 +4,7 @@
     uv run --extra analysis python -m analysis.plot timeseries \
         results/raw/<series>/<run_id>.server.jsonl
     uv run --extra analysis python -m analysis.plot context results/aggregated/<series>
+    uv run --extra analysis python -m analysis.plot output results/aggregated/<series>
 
 sweep       median over repeats, error bars = min..max across repeats:
               throughput vs level, TTFT p50/p95 vs level, TPOT p50/p95 vs level,
@@ -14,6 +15,14 @@ context     Exp2, closed-loop runs of all prompt lengths in the series:
               c=1: TTFT p50 / server prefill and TPOT p50 vs prompt length;
               running mean vs concurrency per prompt length, dashed = KV pool / (P + out/2);
               KV tokens per running sequence vs expected P + out/2 (diagonal = match)
+output      Exp3, closed-loop runs with P=512 for every output length in the series:
+              c=1: TPOT p50 and E2E p50 vs out, x = TTFT p50 + (out - 1) * TPOT p50;
+              vs concurrency per out: steady tok/s, steady req/s (dashed: prefill-only ceiling
+              1 / server prefill at c=1), TPOT p50, running mean (dashed: KV pool / (P + out/2)),
+              KV usage mean, preemptions per 100 measured requests;
+              TPOT p50 vs the indirect estimate d(n) + n * prefill / out, d(n) from out=128 runs
+              without preemption, held flat outside their range of n
+              (diagonal = match; an estimate, not a measurement)
 Output: results/figures/<series>/*.png
 """
 
@@ -29,6 +38,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
 
 from client.server_metrics import metric  # noqa: E402
 
@@ -235,6 +245,103 @@ def context(agg_dir: Path, out_dir: Path) -> list[Path]:
     return paths
 
 
+def output(agg_dir: Path, out_dir: Path, prompt_len: int = 512) -> list[Path]:
+    runs = [r for r in load_runs(agg_dir)
+            if r["mode"] == "closed" and _num(r.get("input_len")) == prompt_len]  # fmt: skip
+    olen = lambda r: int(float(r["output_len"]))  # noqa: E731
+    for r in runs:
+        tok_s = _num(r.get("steady_output_tok_s"))
+        r["steady_req_s"] = tok_s / olen(r) if tok_s is not None else None
+        pre, req = _num(r.get("server_preemptions")), _num(r.get("requests"))
+        r["preemptions_per_100_req"] = 100 * pre / req if pre is not None and req else None
+    lengths = sorted({olen(r) for r in runs})
+    c1 = [r for r in runs if _num(r["value"]) == 1]
+    prefill_ms = _median_by(c1, lambda r: 0, "server_prefill_mean_ms").get(0)
+    cap = _median_by(runs, lambda r: 0, "server_kv_capacity_tokens").get(0)
+    paths = []
+
+    def save(fig, name: str) -> None:
+        fig.suptitle(f"{agg_dir.name}: output length, P={prompt_len}", fontsize=9)
+        fig.tight_layout()
+        p = out_dir / f"output_{name}.png"
+        fig.savefig(p, dpi=130)
+        plt.close(fig)
+        paths.append(p)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+    tpot, e2e, ttft = (
+        _median_by(c1, olen, col) for col in ("tpot_p50_ms", "e2e_p50_ms", "ttft_p50_ms")
+    )
+    xs = sorted(tpot)
+    ax1.plot(xs, [tpot[o] for o in xs], marker="o", label="TPOT p50")
+    ax1.set_ylim(bottom=0)
+    ax2.plot(sorted(e2e), [e2e[o] for o in sorted(e2e)], marker="o", label="E2E p50")
+    pred = [o for o in xs if o in ttft]
+    ax2.scatter(pred, [ttft[o] + (o - 1) * tpot[o] for o in pred], marker="x", color="black",
+                zorder=3, label="TTFT + (out - 1) x TPOT")  # fmt: skip
+    for ax in (ax1, ax2):
+        ax.set_xlabel("output tokens (c=1)")
+        ax.set_ylabel("ms")
+        ax.set_xscale("log", base=2)
+        ax.grid(alpha=0.3)
+        ax.legend()
+    save(fig, "c1")
+
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+    panels = (
+        ("steady_output_tok_s", "steady output tok/s"),
+        ("steady_req_s", "steady req/s (dashed: 1 / prefill at c=1)"),
+        ("tpot_p50_ms", "TPOT p50, ms"),
+        ("server_running_mean", "running mean (dashed: KV pool / (P + out/2))"),
+        ("server_kv_usage_mean", "KV usage mean"),
+        ("preemptions_per_100_req", "preemptions per 100 requests"),
+    )
+    for ax, (col, ylabel) in zip(axes.flat, panels, strict=True):
+        for out in lengths:
+            sub = [r for r in runs if olen(r) == out]
+            if len({r["value"] for r in sub}) < 2:
+                continue
+            xs, med, err = by_level(sub, col)
+            line = ax.errorbar(xs, med, yerr=err, marker="o", capsize=3, label=f"out={out}")
+            if cap and col == "server_running_mean":
+                ax.axhline(cap / (prompt_len + out / 2), ls="--", lw=1, color=line[0].get_color())
+        if prefill_ms and col == "steady_req_s":
+            ax.axhline(1000 / prefill_ms, ls="--", lw=1, color="grey")
+        if col == "steady_output_tok_s":
+            ax.set_yscale("log")
+        ax.set_xlabel("concurrency")
+        ax.set_xscale("log", base=2)
+        ax.set_ylabel(ylabel)
+        ax.grid(alpha=0.3)
+        ax.legend()
+    save(fig, "sweep")
+
+    clean = lambda r: _num(r.get("server_preemptions")) == 0  # noqa: E731
+    base = sorted(
+        (n, _num(r["tpot_p50_ms"]) - n * prefill_ms / 128)
+        for r in runs if olen(r) == 128 and clean(r) and prefill_ms
+        and (n := _num(r.get("server_running_mean"))) and _num(r.get("tpot_p50_ms"))
+    )  # fmt: skip
+    est: dict[int, list[tuple[float, float]]] = {}
+    for r in runs:
+        n, y = _num(r.get("server_running_mean")), _num(r.get("tpot_p50_ms"))
+        if len(base) >= 2 and olen(r) != 128 and clean(r) and n and y:
+            d = float(np.interp(n, [b[0] for b in base], [b[1] for b in base]))
+            est.setdefault(olen(r), []).append((d + n * prefill_ms / olen(r), y))
+    if est:
+        fig, ax = plt.subplots(figsize=(5, 5))
+        for out in sorted(est):
+            ax.scatter(*zip(*est[out], strict=True), label=f"out={out}", s=18)
+        lim = max(ax.get_xlim()[1], ax.get_ylim()[1])
+        ax.plot([0, lim], [0, lim], color="grey", lw=1, ls="--")
+        ax.set_xlabel("estimate d(n) + n x prefill / out, ms")
+        ax.set_ylabel("TPOT p50 (measured), ms")
+        ax.grid(alpha=0.3)
+        ax.legend()
+        save(fig, "tpot_model")
+    return paths
+
+
 def timeseries(server_jsonl: Path, out_dir: Path) -> Path:
     snaps = [json.loads(line) for line in server_jsonl.read_text().splitlines() if line.strip()]
     t0 = snaps[0]["t_unix"]
@@ -263,7 +370,7 @@ def timeseries(server_jsonl: Path, out_dir: Path) -> Path:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    p.add_argument("kind", choices=["sweep", "timeseries", "context"])
+    p.add_argument("kind", choices=["sweep", "timeseries", "context", "output"])
     p.add_argument("path", type=Path, help="results/aggregated/<series> or a .server.jsonl file")
     p.add_argument("--out-root", type=Path, default=Path("results/figures"))
     a = p.parse_args()
@@ -273,7 +380,7 @@ def main() -> None:
     if a.kind == "timeseries":
         paths = [timeseries(a.path, out_dir)]
     else:
-        paths = (sweep if a.kind == "sweep" else context)(a.path, out_dir)
+        paths = {"sweep": sweep, "context": context, "output": output}[a.kind](a.path, out_dir)
     for path in paths:
         print(f"wrote {path}")
 
