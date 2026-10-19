@@ -1,6 +1,7 @@
 # Exp3 — output length, docs/experiments/EXP_004_OUTPUT_LENGTH.md (draft).
-# Exp3C prefill-heavy: 512 -> 32. Expected ceiling from prefill compute (0.278 ms/token at P=512,
-# Exp2A): <= ~7 req/s, <= ~225 output tok/s; indirect estimate with decode ~5.6 req/s at c=64.
+# Exp3C prefill-heavy: 512 -> 32. Reference estimate from single-request prefill cost (0.278 ms/token
+# at P=512, c=1, Exp2A): ~7 req/s, ~225 output tok/s if batching does not cut it.
+# Indirect estimate with decode time: ~5.6 req/s at c=64.
 # KV boundary for O=32 is ~100 sequences, so levels stop at c=80 to keep the two limits apart.
 # E2E ~3 s at c=8 to ~12-14 s at c=64-80, stagger_s 10 is of the same order.
 name: exp3_out32
