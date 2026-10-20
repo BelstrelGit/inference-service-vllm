@@ -130,6 +130,19 @@ def server_stats(snaps: list[dict], win: tuple[float, float] | None) -> dict:
         if out["server_kv_tokens_mean"] is not None and running
         else None
     )
+    # KV usage while the queue is non-empty, skipping intervals with a preemption: under the
+    # vLLM 0.30 admission rule (a waiting request needs its whole prompt in free blocks) it
+    # should sit at or above 1 - P / K (EXP_005). Run-wide mean KV usage mixes in the time
+    # between admissions and is lower.
+    queued = [
+        metric(s, "vllm:kv_cache_usage_perc")
+        for prev, s in zip(inside, inside[1:], strict=False)
+        if (metric(s, "vllm:num_requests_waiting") or 0) > 0
+        and metric(s, "vllm:num_preemptions_total") == metric(prev, "vllm:num_preemptions_total")
+    ]
+    queued = [v for v in queued if v is not None]
+    out["server_queued_snapshots"] = len(queued)
+    out["server_kv_usage_queued_p50"] = statistics.median(queued) if queued else None
     # vLLM 0.30: reason="capacity" (no scheduling capacity: KV blocks, max_num_seqs, token
     # budget are NOT distinguished) or "deferred" (LoRA budget, KV transfer, blocked)
     for reason in ("capacity", "deferred"):

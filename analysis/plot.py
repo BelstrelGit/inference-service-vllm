@@ -305,7 +305,7 @@ def output(agg_dir: Path, out_dir: Path, prompt_len: int = 512) -> list[Path]:
         ("steady_req_s", "steady req/s (dashed: 1 / prefill at c=1)"),
         ("tpot_p50_ms", "TPOT p50, ms"),
         ("server_running_mean", "running mean (dashed: KV pool / (P + out/2))"),
-        ("server_kv_usage_mean", "KV usage mean (dashed: 1 - P / K)"),
+        ("server_kv_usage_mean", "KV usage mean (x: while queued, p50; dashed: 1 - P / K)"),
         ("preemptions_per_100_req", "preemptions per 100 requests"),
     )
     for ax, (col, ylabel) in zip(axes.flat, panels, strict=True):
@@ -383,7 +383,7 @@ def kv(agg_dirs: list[Path], out_dir: Path, prompt_len: int = 2048) -> list[Path
         ("steady_output_tok_s", "steady output tok/s"),
         ("tpot_p50_ms", "TPOT p50, ms"),
         ("ttft_p50_ms", "TTFT p50, ms"),
-        ("server_kv_usage_mean", "KV usage mean (dashed: 1 - P / K)"),
+        ("server_kv_usage_mean", "KV usage mean (x: while queued, p50; dashed: 1 - P / K)"),
         ("preemptions_per_100_req", "preemptions per 100 requests"),
     )
     for ax, (col, ylabel) in zip(axes.flat, panels, strict=True):
@@ -401,6 +401,8 @@ def kv(agg_dirs: list[Path], out_dir: Path, prompt_len: int = 2048) -> list[Path
                 ax.axhline(cap / footprint, ls=":", lw=1, color=color)
             elif col == "server_kv_usage_mean":
                 ax.axhline(1 - prompt_len / cap, ls="--", lw=1, color=color)
+                qx, qmed, _ = by_level(runs, "server_kv_usage_queued_p50")
+                ax.scatter(qx, qmed, marker="x", s=40, color=color, zorder=3)
         if col == "ttft_p50_ms":
             ax.set_yscale("log")
         ax.set_xlabel("concurrency")
