@@ -16,6 +16,9 @@ metadata:
     app: vllm
 spec:
   replicas: 1
+  # Cold start = autoscaler adding the L4 node (with retries on GCE out of resources) + image
+  # pull + weights load; it can exceed the default 600 s and mark the rollout failed.
+  progressDeadlineSeconds: 1800
   strategy:
     type: Recreate
   selector:
