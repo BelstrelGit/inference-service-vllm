@@ -1,0 +1,56 @@
+# Fallback only (not in kustomization.yaml by default): a separate DCGM hostengine, as in
+# Google's GKE example (prometheus-engine examples/nvidia-dcgm/exporter.yaml, Apache 2.0).
+# Use it if the exporter's embedded hostengine cannot see the GPU:
+#   1. add hostengine.yaml to resources in kustomization.yaml;
+#   2. append  --remote-hostengine-info $(NODE_IP)  to the exporter args in exporter.yaml.
+# Image tag: match the DCGM version of the pinned exporter image.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dcgm-hostengine
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: dcgm-hostengine
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dcgm-hostengine
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dcgm-hostengine
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: cloud.google.com/gke-accelerator
+                    operator: Exists
+      tolerations:
+        - operator: Exists
+      volumes:
+        - name: nvidia-install-dir-host
+          hostPath:
+            path: /home/kubernetes/bin/nvidia
+            type: Directory
+      containers:
+        - name: dcgm-hostengine
+          image: nvcr.io/nvidia/cloud-native/dcgm:4.5.2-1-ubuntu22.04
+          command: ["nv-hostengine", "-n", "-b", "ALL"]
+          ports:
+            - containerPort: 5555
+              hostPort: 5555
+          securityContext:
+            privileged: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: nvidia-install-dir-host
+              mountPath: /usr/local/nvidia

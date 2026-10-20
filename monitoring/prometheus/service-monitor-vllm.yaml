@@ -1,0 +1,17 @@
+# Prometheus scrapes vLLM through its Service (k8s/serving/vllm.yaml: label app=vllm, port
+# "http", /metrics). 5 s: runs last 2-6 min; the bench client keeps its own 1 s snapshots.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vllm
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames: [vllm]
+  selector:
+    matchLabels:
+      app: vllm
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 5s

@@ -1,0 +1,132 @@
+# kube-prometheus-stack values for vllm-lab (design: docs/MONITORING.md).
+#
+# Everything except node-exporter runs on the dedicated obs-pool (label + taint
+# workload=observability), so it does not compete with bench-client on default-pool or with
+# vLLM on the L4 node. Prometheus is for watching runs; experiment numbers still come from the
+# client's raw records and its own 1 s /metrics snapshots.
+
+alertmanager:
+  enabled: false # no alerts in scope
+
+# GKE manages the control plane: these targets cannot be scraped and would stay "down".
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+coreDns:
+  enabled: false # GKE runs kube-dns
+
+prometheus:
+  prometheusSpec:
+    nodeSelector:
+      workload: observability
+    tolerations:
+      - key: workload
+        operator: Equal
+        value: observability
+        effect: NoSchedule
+    scrapeInterval: 30s # vLLM and DCGM monitors override with 5s
+    evaluationInterval: 30s
+    retention: 7d
+    retentionSize: 8GB
+    # Pick up every ServiceMonitor / PodMonitor in the cluster, not only those carrying the
+    # chart's release label; otherwise ours in monitoring/ would be silently ignored.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 300m
+        memory: 1Gi
+      limits:
+        memory: 2Gi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          # pd-balanced, WaitForFirstConsumer: the disk is created in the zone of the node
+          # Prometheus first lands on; after that the PV pins Prometheus to that zone.
+          storageClassName: standard-rwo
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+
+prometheusOperator:
+  nodeSelector:
+    workload: observability
+  tolerations:
+    - key: workload
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  admissionWebhooks:
+    patch:
+      nodeSelector:
+        workload: observability
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: observability
+          effect: NoSchedule
+
+kube-state-metrics:
+  nodeSelector:
+    workload: observability
+  tolerations:
+    - key: workload
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+prometheus-node-exporter:
+  # On every node, including the L4 node (taint nvidia.com/gpu) and obs-pool.
+  tolerations:
+    - operator: Exists
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+
+grafana:
+  nodeSelector:
+    workload: observability
+  tolerations:
+    - key: workload
+      operator: Equal
+      value: observability
+      effect: NoSchedule
+  admin:
+    existingSecret: grafana-admin # created by a command in monitoring/README.md, not in Git
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: false # dashboards and the datasource are provisioned from Git
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"

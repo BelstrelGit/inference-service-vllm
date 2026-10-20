@@ -1,0 +1,17 @@
+KV args on the Deployment:
+  "--num-gpu-blocks-override=1678"]
+cache_config_info:
+  cache_dtype="auto"
+  kv_cache_dtype_skip_layers="[]"
+  kv_cache_size_tokens="26848"
+  mamba_cache_dtype="auto"
+  mamba_ssm_cache_dtype="auto"
+  num_gpu_blocks="1678"
+  num_gpu_blocks_override="1678"
+startup log:
+  (APIServer pid=1) INFO 10-20 16:40:19 [api_utils.py:286] non-default args: {'model_tag': 'Qwen/Qwen2.5-7B-Instruct', 'host': '0.0.0.0', 'model': 'Qwen/Qwen2.5-7B-Instruct', 'dtype': 'bfloat16', 'revision': 'a09a35458c702b33eeacc393d103063234e8bc28', 'tokenizer_revision': 'a09a35458c702b33eeacc393d103063234e8bc28', 'max_model_len': 8192, 'generation_config': 'vllm', 'gpu_memory_utilization': 0.9, 'num_gpu_blocks_override': 1678, 'enable_prefix_caching': True, 'max_num_batched_tokens': 2048, 'max_num_seqs': 256, 'enable_chunked_prefill': True}
+  (EngineCore pid=54) INFO 10-20 16:40:55 [cuda.py:538] Using FLASH_ATTN attention backend out of potential backends: ['FLASH_ATTN', 'FLASHINFER', 'TRITON_ATTN', 'FLEX_ATTENTION'].
+  (EngineCore pid=54) INFO 10-20 16:43:02 [gpu_worker.py:655] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9000 is equivalent to --gpu-memory-utilization=0.8821 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9179. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+  (EngineCore pid=54) INFO 10-20 16:43:02 [kv_cache_utils.py:2711] Overriding num_gpu_blocks=3356 with num_gpu_blocks_override=1678
+  (EngineCore pid=54) INFO 10-20 16:43:02 [kv_cache_utils.py:2395] GPU KV cache size: 26,848 tokens, Maximum concurrency for 8,192 tokens per request: 3.28x
+OK: kv_cache_size_tokens=26848

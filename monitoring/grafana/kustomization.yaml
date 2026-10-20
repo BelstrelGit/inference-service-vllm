@@ -1,0 +1,13 @@
+# Dashboards as ConfigMaps; the Grafana sidecar of kube-prometheus-stack loads every ConfigMap
+# labelled grafana_dashboard=1 (monitoring/prometheus/values.yaml). Edit the JSON in Git, not
+# in the Grafana UI: Grafana has no persistent storage.
+namespace: monitoring
+configMapGenerator:
+  - name: dashboard-vllm-gpu-overview
+    files:
+      - dashboards/vllm-gpu-overview.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+generatorOptions:
+  disableNameSuffixHash: true
