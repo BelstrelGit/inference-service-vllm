@@ -94,8 +94,8 @@ Switching the server (Exp4 overlays): one `apply` replaces the pod (strategy Rec
 
 ```bash
 kubectl apply -k k8s/exp4/kv1678
-kubectl -n vllm rollout status deploy/vllm --timeout=20m
-scripts/check-server.sh 26848
+kubectl -n vllm rollout status deploy/vllm --timeout=30m
+scripts/check-server.sh 26848 --save results/raw/l4-qwen7b-bf16-kv1678-v1   # keeps args, pool and backend next to the runs
 scripts/run-bench.sh load configs/scenarios/exp4_kv1678.yaml
 ```
 

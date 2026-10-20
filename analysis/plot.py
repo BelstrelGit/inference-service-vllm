@@ -305,7 +305,7 @@ def output(agg_dir: Path, out_dir: Path, prompt_len: int = 512) -> list[Path]:
         ("steady_req_s", "steady req/s (dashed: 1 / prefill at c=1)"),
         ("tpot_p50_ms", "TPOT p50, ms"),
         ("server_running_mean", "running mean (dashed: KV pool / (P + out/2))"),
-        ("server_kv_usage_mean", "KV usage mean"),
+        ("server_kv_usage_mean", "KV usage mean (dashed: 1 - P / K)"),
         ("preemptions_per_100_req", "preemptions per 100 requests"),
     )
     for ax, (col, ylabel) in zip(axes.flat, panels, strict=True):
@@ -364,7 +364,8 @@ def kv(agg_dirs: list[Path], out_dir: Path, prompt_len: int = 2048) -> list[Path
         cap = _median_by(runs, lambda r: 0, "server_kv_capacity_tokens").get(0)
         out = _median_by(runs, lambda r: 0, "output_len").get(0)
         if runs and cap and out:
-            series.append((agg_dir.name, runs, cap, prompt_len + out / 2))
+            # F: mean KV footprint per running sequence, + half a 16-token block of rounding
+            series.append((agg_dir.name, runs, cap, prompt_len + out / 2 + 8))
     series.sort(key=lambda s: s[2])
     paths = []
 
@@ -378,11 +379,11 @@ def kv(agg_dirs: list[Path], out_dir: Path, prompt_len: int = 2048) -> list[Path
 
     fig, axes = plt.subplots(2, 3, figsize=(15, 8))
     panels = (
-        ("server_running_mean", "running mean (dashed: K / (P + out/2))"),
+        ("server_running_mean", "running mean (dashed: (K - P) / F, dotted: K / F)"),
         ("steady_output_tok_s", "steady output tok/s"),
         ("tpot_p50_ms", "TPOT p50, ms"),
         ("ttft_p50_ms", "TTFT p50, ms"),
-        ("server_kv_usage_mean", "KV usage mean"),
+        ("server_kv_usage_mean", "KV usage mean (dashed: 1 - P / K)"),
         ("preemptions_per_100_req", "preemptions per 100 requests"),
     )
     for ax, (col, ylabel) in zip(axes.flat, panels, strict=True):
@@ -392,8 +393,14 @@ def kv(agg_dirs: list[Path], out_dir: Path, prompt_len: int = 2048) -> list[Path
                 continue
             line = ax.errorbar(xs, med, yerr=err, marker="o", capsize=3,
                                label=f"{name} (K={cap:.0f})")  # fmt: skip
+            # vLLM 0.30 admits a waiting request only if its whole prompt fits in free blocks
+            # (EXP_003): the queue starts at ~(K - P) / F running, the pool is full at K / F.
+            color = line[0].get_color()
             if col == "server_running_mean":
-                ax.axhline(cap / footprint, ls="--", lw=1, color=line[0].get_color())
+                ax.axhline((cap - prompt_len) / footprint, ls="--", lw=1, color=color)
+                ax.axhline(cap / footprint, ls=":", lw=1, color=color)
+            elif col == "server_kv_usage_mean":
+                ax.axhline(1 - prompt_len / cap, ls="--", lw=1, color=color)
         if col == "ttft_p50_ms":
             ax.set_yscale("log")
         ax.set_xlabel("concurrency")
@@ -412,9 +419,10 @@ def kv(agg_dirs: list[Path], out_dir: Path, prompt_len: int = 2048) -> list[Path
     if series:
         ks = [0, max(s[2] for s in series) * 1.05]
         footprint = series[0][3]
-        ax1.plot(ks, [k / footprint for k in ks], color="grey", lw=1, label="K / (P + out/2)")
-        ax1.plot(ks, [0.93 * k / footprint for k in ks], color="grey", lw=1, ls=":",
-                 label="0.93 x")  # fmt: skip
+        ax1.plot(ks, [k / footprint for k in ks], color="grey", lw=1, ls=":",
+                 label="K / F (pool full)")  # fmt: skip
+        ax1.plot(ks, [max(k - prompt_len, 0) / footprint for k in ks], color="grey", lw=1, ls="--",
+                 label="(K - P) / F (admission)")  # fmt: skip
     ax1.set_ylabel("plateau running (max of level medians)")
     ax2.set_ylabel("max steady output tok/s (max of level medians)")
     for ax in (ax1, ax2):

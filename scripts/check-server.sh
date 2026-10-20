@@ -5,10 +5,30 @@
 #
 #   scripts/check-server.sh            # print only
 #   scripts/check-server.sh 53696      # also fail unless kv_cache_size_tokens == 53696
+#   scripts/check-server.sh 26848 --save results/raw/<series>
+#                                      # also keep the output as <dir>/<UTC time>_server-check.txt
+#                                      # (the backend is in the startup log, not in the run meta)
 set -euo pipefail
 
 NS="${NS:-vllm}"
-want="${1:-}"
+want=""
+save=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --save) save="${2:?--save needs a directory}"; shift 2 ;;
+    *) want="$1"; shift ;;
+  esac
+done
+
+if [ -n "$save" ]; then
+  mkdir -p "$save"
+  out="$save/$(date -u +%Y%m%d-%H%M%S)_server-check.txt"
+  set +e
+  "$0" $want | tee "$out"
+  rc=${PIPESTATUS[0]}
+  echo "saved to $out"
+  exit "$rc"
+fi
 
 echo "KV args on the Deployment:"
 kubectl -n "$NS" get deploy vllm -o jsonpath='{.spec.template.spec.containers[0].args}' \
