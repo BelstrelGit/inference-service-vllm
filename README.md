@@ -16,7 +16,7 @@ Python async load generator ──HTTP (OpenAI-compatible)──▶ vLLM server 
           └── raw JSONL per request                          └── /metrics (Prometheus)
 ```
 
-vLLM runs as a Deployment + ClusterIP Service on GKE (`k8s/serving/`); the load generator runs in a separate Pod on the system node (`k8s/bench/`), so measurements do not go through a laptop or port-forward. Prometheus/Grafana come in M5.
+vLLM runs as a Deployment + ClusterIP Service on GKE (`k8s/serving/`); the load generator runs in a separate Pod on the system node (`k8s/bench/`), so measurements do not go through a laptop or port-forward. Experiment numbers come from the client's raw records and its own 1 s `/metrics` snapshots; Prometheus and Grafana (below) are for watching runs.
 
 ## Planned experiments
 
@@ -28,7 +28,13 @@ vLLM runs as a Deployment + ClusterIP Service on GKE (`k8s/serving/`); the load 
 | [Exp1](docs/experiments/EXP_002_CONCURRENCY.md) | Concurrency scaling: 17 → 485 tok/s, KV-limited saturation begins around c ≈ 96 (~86 sequences running) | done |
 | [Exp2](docs/experiments/EXP_003_CONTEXT_LENGTH.md) | Context length (128–7168 → 128): prefill ≈ 0.28 ms/token; saturation shifts to c ≈ 48 / 25 / 12 for P = 1024 / 2048 / 4096 at ~50k KV tokens, as predicted from KV capacity | done |
 | [Exp3](docs/experiments/EXP_004_OUTPUT_LENGTH.md) | Output length (512 → 32–1024): O=512 saturates at ~64 running (c ≈ 64–72) with 4–5× more preemptions than O=128 and falling throughput past the boundary; O=32 saturates without KV pressure (KV ≤ 0.8), approaching the prefill limit at ~6 req/s | done |
-| [Exp4](docs/experiments/EXP_005_KV_PRESSURE.md) | KV-cache capacity as an intervention (P=2048): pool 0.5× / 0.75× via block override, FP8 KV | designed |
+| [Exp4](docs/experiments/EXP_005_KV_PRESSURE.md) | KV-cache capacity as an intervention (P=2048, pool 0.5× / 0.75× / 1× via block override): the admission boundary follows the pool, plateau ≈ (K − P) / F running (98–100%); throughput grows slower (×1.31 for ×2 pool) because TPOT grows with running; FP8 KV not run | done (bf16) |
+
+## Monitoring
+
+kube-prometheus-stack on a separate node pool, vLLM `/metrics` and DCGM GPU metrics at 5 s, one dashboard from load to GPU to KV to latency. Design and install notes: [docs/MONITORING.md](docs/MONITORING.md), [monitoring/README.md](monitoring/README.md).
+
+![vLLM + GPU overview, KV pool 0.75x at c=24](docs/images/monitoring/dashboard-gpu-kv.png)
 
 ## Repository layout
 

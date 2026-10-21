@@ -4,8 +4,9 @@ Minimal Standard GKE cluster: one small system node + one autoscaled L4 node poo
 
 ```text
 vllm-lab (zonal control plane in us-central1-a)
-├── default-pool   e2-standard-2 × 1            system pods, later Prometheus/Grafana
-└── l4-pool        g2-standard-8 + 1 × L4, 0–1  vLLM; driver installed by GKE; any zone of us-central1
+├── default-pool   e2-standard-2 × 1            system pods, bench-client
+├── l4-pool        g2-standard-8 + 1 × L4, 0–1  vLLM; driver installed by GKE; any zone of us-central1
+└── obs-pool       e2-standard-2, 0–1           Prometheus, Grafana (monitoring/README.md)
 ```
 
 ## Variables
@@ -107,9 +108,12 @@ End:
 kubectl delete -f k8s/serving/vllm.yaml           # removes the Deployment of any variant
 gcloud container clusters resize $CLUSTER --node-pool l4-pool --num-nodes 0 --project $PROJECT --zone $ZONE --quiet
 gcloud container clusters resize $CLUSTER --node-pool default-pool --num-nodes 0 --project $PROJECT --zone $ZONE --quiet
+gcloud container clusters resize $CLUSTER --node-pool obs-pool --num-nodes 0 --project $PROJECT --zone $ZONE --quiet   # once monitoring is installed
 gcloud compute instances list --project $PROJECT  # expect no vllm-lab nodes
-gcloud compute disks list --project $PROJECT      # expect no leftover node disks
+gcloud compute disks list --project $PROJECT      # expect no node disks; with monitoring, one PVC disk (Prometheus data) stays
 ```
+
+`gcloud container clusters resize` runs one operation at a time per cluster; Ctrl-C only stops waiting, the operation continues (a second resize then fails with `CLUSTER_ALREADY_HAS_OPERATION` until it finishes).
 
 ## Verify GPU
 

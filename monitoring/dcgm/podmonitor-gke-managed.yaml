@@ -1,0 +1,20 @@
+# Prometheus scrapes the dcgm-exporter that GKE itself runs on GPU nodes (namespace
+# gke-managed-system, cluster monitoring component DCGM). Found at install on 2026-10-21: it
+# already holds the DCGM profiling module, so a second exporter (exporter.yaml) fails on the
+# DCGM_FI_PROF_* fields with "The third-party Profiling module returned an unrecoverable error".
+# The managed one exports DEV_* and PROF_* (SM_ACTIVE, DRAM_ACTIVE, PIPE_TENSOR_ACTIVE, ...);
+# its field list is the ConfigMap gke-managed-system/dcgm-exporter-metrics, set by GKE.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: gke-managed-dcgm-exporter
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames: [gke-managed-system]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gke-managed-dcgm-exporter
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 5s

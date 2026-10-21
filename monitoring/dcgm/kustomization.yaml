@@ -1,10 +1,15 @@
 namespace: monitoring
 resources:
-  - exporter.yaml
-  # - hostengine.yaml   # fallback, see the header of hostengine.yaml
-configMapGenerator:
-  - name: dcgm-exporter-counters
-    files:
-      - counters.csv
-generatorOptions:
-  disableNameSuffixHash: true
+  # GKE already runs dcgm-exporter on GPU nodes and it holds the profiling module: scrape it.
+  - podmonitor-gke-managed.yaml
+  # Own exporter, only if the GKE DCGM component is disabled on the cluster
+  # (gcloud container clusters update --monitoring without DCGM). Then also uncomment the
+  # generator below; hostengine.yaml is its fallback (see its header).
+  # - exporter.yaml
+  # - hostengine.yaml
+# configMapGenerator:
+#   - name: dcgm-exporter-counters
+#     files:
+#       - counters.csv
+# generatorOptions:
+#   disableNameSuffixHash: true
