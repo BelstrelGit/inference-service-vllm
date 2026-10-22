@@ -77,8 +77,11 @@ Start:
 
 ```bash
 gcloud container clusters resize $CLUSTER --node-pool default-pool --num-nodes 1 --project $PROJECT --zone $ZONE --quiet
+gcloud container clusters resize $CLUSTER --node-pool obs-pool --num-nodes 1 --project $PROJECT --zone $ZONE --quiet   # monitoring (required in Exp5)
 gcloud container clusters get-credentials $CLUSTER --project $PROJECT --zone $ZONE
 kubectl apply -f k8s/serving/vllm.yaml            # the GPU request makes the autoscaler add the L4 node
+# Exp5 only, right after the apply: record the cold-start phases (R0)
+# scripts/fault.sh observe --save results/raw/l4-qwen7b-bf16-restart-v1
 kubectl -n vllm rollout status deploy/vllm --timeout=30m
 scripts/check-server.sh 53696                     # baseline: no KV args, bf16 KV, 53,696 tokens
 ```
@@ -87,11 +90,11 @@ Switching the server (Exp4 overlays): one `apply` replaces the pod (strategy Rec
 
 | Server | Apply | `check-server.sh` | Scenarios |
 |---|---|---|---|
-| baseline | `kubectl apply -f k8s/serving/vllm.yaml` | `53696` | Exp1–Exp3, `exp4_control` |
+| baseline | `kubectl apply -f k8s/serving/vllm.yaml` | `53696` | Exp1–Exp3, `exp4_control`, Exp5 |
 | 0.5× pool | `kubectl apply -k k8s/exp4/kv1678` | `26848` | `exp4_kv1678` |
 | 0.75× pool | `kubectl apply -k k8s/exp4/kv2517` | `40272` | `exp4_kv2517` |
-| FP8, same pool | `kubectl apply -k k8s/exp4/fp8-kv3356` | `53696` | `exp4_fp8_kv3356` |
-| FP8, full pool | `kubectl apply -k k8s/exp4/fp8` | no argument: record the size | `exp4_fp8` |
+| FP8, same pool | `kubectl apply -k k8s/exp4/fp8-kv3356` | `53696` | `exp4_fp8_kv3356` (Future work) |
+| FP8, full pool | `kubectl apply -k k8s/exp4/fp8` | no argument: record the size | `exp4_fp8` (Future work) |
 
 ```bash
 kubectl apply -k k8s/exp4/kv1678

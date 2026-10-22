@@ -4,6 +4,28 @@
 
 Цель проекта — построить воспроизводимый GPU-backed inference service на базе vLLM, исследовать его поведение под различными типами нагрузки и добавить необходимую эксплуатационную инфраструктуру: Kubernetes, observability, reproducibility и failure testing.
 
+## Текущее состояние и core path (2026-10-21)
+
+Исходный план ниже сохранён как был, с пометками. Фактический core path короче:
+
+```text
+core experiments (Exp0–Exp3)      done
+        ↓
+KV intervention (Exp4A, bf16)     done
+        ↓
+monitoring (Prometheus, Grafana, DCGM)   done
+        ↓
+restart / recovery (Exp5)         дизайн и инструменты готовы, GPU-сессия впереди
+        ↓
+final README / architecture / findings
+        ↓
+project freeze
+```
+
+- Новые performance-эксперименты после Exp4 заморожены.
+- После Exp5 core project считается практически завершённым: остаётся финализация (M6 в сокращённом виде).
+- M5 (design notes) и расширения из M4 и M6 — Helm, CI сверх unit tests, autoscaling, сравнение runtimes, вторая реплика и т. п. — не обязательны и перенесены в [Future work](#future-work). Они добавляются, только если отвечают на отдельный технический вопрос.
+
 ## M0 — Foundation
 
 **Неделя:** 1
@@ -201,7 +223,7 @@
 
 После стабильного standalone setup:
 
-- собрать Docker image;
+- собрать Docker image (используется upstream `vllm/vllm-openai`, закреплённый по digest; свой образ — Future work);
 - pin dependencies;
 - pin model revision;
 - pin tokenizer revision;
@@ -213,12 +235,14 @@
   - resources;
   - probes;
   - metrics endpoint;
-- после стабилизации manifests собрать минимальный Helm chart;
+- ~~после стабилизации manifests собрать минимальный Helm chart~~ → Future work;
 - добавить Prometheus;
 - добавить Grafana;
 - добавить DCGM Exporter, если environment позволяет.
 
 ### Cold-start experiment
+
+Входит в Exp5 компактно: фазы старта R0 / R1 / R2 ([EXP_006](experiments/EXP_006_RESTART_UNDER_LOAD.md)).
 
 Разложить startup на фазы:
 
@@ -232,6 +256,8 @@
 Сравнить warm и cold restart.
 
 ### Failure / overload experiment
+
+Exp5: рестарт пода под нагрузкой ([EXP_006](experiments/EXP_006_RESTART_UNDER_LOAD.md)). Cost metrics — Future work.
 
 Во время load проверить:
 
@@ -258,6 +284,8 @@
 ---
 
 ## M5 — System Design Notes
+
+**Статус:** не входит в core, перенесено в [Future work](#future-work).
 
 **Недели:** 7–9
 
@@ -330,6 +358,8 @@
 
 ## M6 — Finalization
 
+**Core:** README, findings, architecture diagram, limitations, проверка воспроизводимости. Дополнительные эксперименты из списка ниже — в [Future work](#future-work).
+
 **Недели:** 9–10
 
 - привести README к финальному состоянию;
@@ -351,6 +381,8 @@
 Они добавляются только при наличии отдельного технического вопроса.
 
 ## Основная последовательность
+
+Исходная последовательность; фактический core path — в начале документа.
 
 ```text
 environment discovery
@@ -400,3 +432,24 @@ Core project завершён, когда:
 - проект можно воспроизвести из README.
 
 После этого новые компоненты добавляются только тогда, когда они отвечают на новый технический вопрос.
+
+## Future work
+
+Сознательно не входит в core. Каждый пункт — отдельный вопрос, а не обязательный шаг.
+
+**Performance (заморожено после Exp4):**
+- Exp4B / 4C, FP8 KV cache ([EXP_005](experiments/EXP_005_KV_PRESSURE.md)): переносится ли модель приёма (K − P) / F на пул K ≈ 2× базового (в bf16 больше базового пула не получить); как FP8 KV вместе со сменой attention backend на L4 (FlashAttention 2 не поддерживает FP8 KV на sm89) влияет на TPOT; как FP8 KV влияет на качество ответов (нужен клиентский режим с реальным текстом).
+- Повтор проверки модели приёма при P=4096 на урезанных пулах (запасной тест из EXP_005; при P=2048 модели уже различились).
+- Prefix caching: эффект общих префиксов (`shared_prefix_len` в клиенте уже есть).
+- Отказ при старте, если пул меньше `max-model-len` (`num-gpu-blocks-override=500`), и другие memory-related failures.
+- Дополнительные sweeps планировщика (`max-num-batched-tokens`, ступенька TTFT между c=1 и c=2, TPOT при c=96 против c=128).
+
+**Масштабирование и надёжность:**
+- Вторая реплика, multi-GPU, tensor parallelism: квота проекта — одна GPU.
+- Рестарт без полной недоступности: ≥ 2 реплики, PodDisruptionBudget, `RollingUpdate`, `preStop`; кэш модели вне `emptyDir` (PVC, образ с весами), чтобы сократить cold start.
+- Autoscaling: эксперименты с сигналами (waiting, running, TTFT, GPU), minimum warm capacity.
+
+**Инфраструктура и design notes (бывший M5):**
+- Helm chart, CI сверх unit tests (сборка образа, `helm template`, валидация манифестов), свой Docker image.
+- Design notes: routing и admission control, model lifecycle (rollback, blue/green, canary), сравнение vLLM / Triton / TGI.
+- Нормализованные cost metrics (GPU-hours, cost per request, cost per 1M tokens, idle capacity).

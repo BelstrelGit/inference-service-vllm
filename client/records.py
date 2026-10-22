@@ -38,6 +38,10 @@ class RequestRecord:
     retry_count: int = 0
     # arrival time of every chunk that carried generated text (one chunk ~ one token in vLLM)
     token_timestamps: list[float] = field(default_factory=list)
+    # one dict per attempt (client.stream): start / end (perf_counter), outcome, http_status,
+    # mid_stream, error, retry_in_s (planned pause before the next attempt, None = last).
+    # Empty in records written before attempts were logged.
+    attempts: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)

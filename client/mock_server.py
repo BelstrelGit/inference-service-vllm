@@ -10,6 +10,8 @@ Toy latency model, NOT a performance model of vLLM:
   - TTFT = ttft + queue wait;
   - each next token takes itl * (1 + batch_slowdown * (running - 1)).
 It exists so the load generator, metrics scraper and analysis can be exercised end to end.
+`MockServer.kill()` imitates a pod restart: in-flight streams are cut without [DONE] and the
+port stops accepting connections; `start(port=...)` on the same port brings it back.
 Fake tokenizer: a word "w<id>" is token <id>; any other word is token 0.
 
     uv run python -m client.mock_server --port 8000 --ttft 0.2 --itl 0.03 --max-num-seqs 8
@@ -46,6 +48,7 @@ class MockState:
         self.waiting = 0
         self.max_running_seen = 0
         self.failures_left = cfg.fail_first
+        self.dead = threading.Event()  # set by MockServer.kill(): cut in-flight streams
         self.counters = {
             "prompt_tokens_total": 0.0,
             "generation_tokens_total": 0.0,
@@ -100,7 +103,15 @@ def make_handler(state: MockState) -> type[BaseHTTPRequestHandler]:
         def _json(self, obj, code: int = 200) -> None:
             self._send(code, json.dumps(obj).encode())
 
+        def _dead(self) -> bool:
+            """After kill(): kept-alive connections get no answer, like a deleted pod's."""
+            if state.dead.is_set():
+                self.close_connection = True
+            return state.dead.is_set()
+
         def do_GET(self):
+            if self._dead():
+                return
             if self.path == "/health":
                 self._send(200, b"")
             elif self.path == "/version":
@@ -113,6 +124,8 @@ def make_handler(state: MockState) -> type[BaseHTTPRequestHandler]:
                 self._send(404, b"{}")
 
         def do_POST(self):
+            if self._dead():
+                return
             req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             if self.path == "/tokenize":
                 toks = fake_tokenize(req["prompt"])
@@ -178,6 +191,9 @@ def make_handler(state: MockState) -> type[BaseHTTPRequestHandler]:
                 for i in range(n):
                     if i:
                         time.sleep(cfg.itl * (1 + cfg.batch_slowdown * (state.running - 1)))
+                    if state.dead.is_set():
+                        self.close_connection = True
+                        return  # connection closes mid-stream: no usage, no [DONE]
                     emit({"choices": [choice(f" t{i}", "length" if i == n - 1 else None)]})
             finally:
                 with state.lock:
@@ -205,6 +221,12 @@ class MockServer(ThreadingHTTPServer):
     def __init__(self, port: int, cfg: MockConfig):
         self.state = MockState(cfg)
         super().__init__(("127.0.0.1", port), make_handler(self.state))
+
+    def kill(self) -> None:
+        """Stop like a deleted pod: cut running streams, close the listening socket."""
+        self.state.dead.set()
+        self.shutdown()
+        self.server_close()
 
 
 def start(port: int = 0, ttft: float = 0.2, itl: float = 0.03, **kw) -> MockServer:

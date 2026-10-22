@@ -1,11 +1,22 @@
+import asyncio
 import json
 import random
+from dataclasses import asdict
+from pathlib import Path
 
 import httpx
 import pytest
 
 from client import mock_server
-from client.load import Run, Scenario, execute, load_scenario, parse_set
+from client.load import (
+    Run,
+    Scenario,
+    execute,
+    load_scenario,
+    main_async,
+    parse_args,
+    parse_set,
+)
 from client.prompts import PromptFactory, PromptSpec
 from client.records import RequestRecord
 from client.server_metrics import metric, parse_prometheus
@@ -173,6 +184,25 @@ def test_scenario_validation_and_overrides(tmp_path):
     sc = load_scenario(str(p), ["concurrency=[4,8]", "repeats=2"])
     assert sc.levels() == [("c4", 4), ("c8", 8)] and sc.repeats == 2
     assert parse_set(["rate=0.5"]) == {"rate": 0.5}
+    with pytest.raises(ValueError, match="backoff_max_s"):
+        scenario(backoff_s=1.0, backoff_max_s=0.5)
+
+
+def test_all_scenario_files_load_and_dry_run(capsys):
+    files = sorted(Path("configs/scenarios").glob("*.yaml"))
+    assert files
+    for f in files:
+        load_scenario(str(f), [])  # unknown keys / invalid combinations raise
+    asyncio.run(main_async(parse_args(["configs/scenarios/exp5_restart_retry.yaml", "--dry-run"])))
+    assert "1 runs, mode=open" in capsys.readouterr().out
+
+
+def test_exp5_scenarios_differ_only_in_retry_policy():
+    a = load_scenario("configs/scenarios/exp5_restart_noretry.yaml", [])
+    b = load_scenario("configs/scenarios/exp5_restart_retry.yaml", [])
+    differ = {k for k, v in asdict(a).items() if asdict(b)[k] != v}
+    assert differ == {"name", "retries", "backoff_max_s"}  # same seed -> same arrivals
+    assert (a.retries, b.retries, b.backoff_max_s) == (0, 100, 8.0)
 
 
 # --- /metrics parsing ----------------------------------------------------------------------

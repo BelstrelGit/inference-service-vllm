@@ -69,6 +69,7 @@ class Scenario:
     timeout_s: float = 300.0
     retries: int = 0
     backoff_s: float = 0.5
+    backoff_max_s: float | None = None  # cap of the exponential pause, before jitter
     seed: int = 0
     metrics_interval_s: float = 1.0  # 0 disables /metrics snapshots
     max_connections: int = 1024  # open loop: must exceed peak in-flight, see validate()
@@ -97,6 +98,8 @@ class Scenario:
             raise ValueError("chat endpoint needs prompt_format: text")
         if self.stagger_s and self.mode != "closed":
             raise ValueError("stagger_s applies to closed mode only")
+        if self.backoff_max_s is not None and self.backoff_max_s < self.backoff_s:
+            raise ValueError("backoff_max_s must be >= backoff_s")
         if self.stagger_s > self.warmup_s:
             # the staggered ramp-up must fall inside the warm-up, not the measure window
             raise ValueError("stagger_s must not exceed warmup_s")
@@ -173,6 +176,7 @@ class Run:
             client, rec, self.model, prompt,
             ignore_eos=self.sc.ignore_eos, temperature=self.sc.temperature,
             retries=self.sc.retries, backoff_s=self.sc.backoff_s, rng=self.rng,
+            backoff_max_s=self.sc.backoff_max_s,
         )  # fmt: skip
         out.write(json.dumps(rec.to_dict()) + "\n")
         self.records.append(rec)

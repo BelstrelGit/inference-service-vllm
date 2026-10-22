@@ -2,20 +2,20 @@
 
 **Статус:** установлено 2026-10-21, после замеров Exp4A (дизайн 2026-10-20). Что пошло не по плану и результаты проверки — в разделе «Установка 2026-10-21».
 
-Цель — самому собрать и увидеть весь путь метрики, без управляемых сервисов GKE:
+Prometheus и Grafana свои (self-hosted `kube-prometheus-stack`: Prometheus Operator, Prometheus, Grafana, kube-state-metrics, node-exporter), без Managed Service for Prometheus: цель — самому собрать и увидеть весь путь метрики. GPU-метрики наш Prometheus снимает с `dcgm-exporter`, который GKE сам запускает на GPU-нодах (GKE-managed): второй экспортер рядом с ним не работает (см. «Установка 2026-10-21»).
 
 ```text
-vLLM /metrics      → Prometheus scrape → TSDB → PromQL → Grafana panel
-L4 → DCGM exporter → Prometheus scrape → TSDB → PromQL → Grafana panel
+vLLM /metrics                      → Prometheus scrape → TSDB → PromQL → Grafana panel
+L4 → dcgm-exporter (GKE-managed)   → Prometheus scrape → TSDB → PromQL → Grafana panel
 ```
 
-Поэтому self-hosted `kube-prometheus-stack` (Prometheus Operator, Prometheus, Grafana, kube-state-metrics, node-exporter), а не Managed Service for Prometheus. GPU-метрики отдаёт `dcgm-exporter`, который GKE сам запускает на GPU-нодах: свой экспортер с ним не уживается (см. «Установка 2026-10-21»), и наш Prometheus снимает метрики с экспортера GKE. Вся конфигурация хранится в Git: кластер можно удалить и поднять заново, мониторинг восстановится из репозитория.
+Вся конфигурация хранится в Git: кластер можно удалить и поднять заново, мониторинг восстановится из репозитория.
 
 ## Когда ставится
 
 Только после замеров Exp4 (bf16 и, если делается, FP8), когда новые performance-эксперименты заморожены. Exp4 сравнивается с Exp2 при неизменном окружении. Prometheus добавил бы второй поток запросов к `/metrics` vLLM и новые поды на нодах, а это новая переменная. В ту же оплачиваемую сессию GKE можно, но после последнего прогона Exp4.
 
-Числа экспериментов по-прежнему считаются из сырых записей клиента и его снимков `/metrics` раз в секунду (`results/raw/`). Prometheus и Grafana нужны, чтобы видеть процесс глазами и для операционного сценария (рестарт пода под нагрузкой), а не как источник чисел для отчётов.
+Числа экспериментов по-прежнему считаются из сырых записей клиента и его снимков `/metrics` раз в секунду (`results/raw/`). Prometheus и Grafana нужны, чтобы видеть процесс глазами, и для операционного сценария Exp5 (рестарт пода под нагрузкой, [EXP_006](experiments/EXP_006_RESTART_UNDER_LOAD.md)): там `analysis/restart.py --prometheus` кладёт GPU-метрики DCGM на ту же шкалу времени. Числа о запросах и очереди и там берутся из записей клиента и его снимков `/metrics`.
 
 ## Topology и размещение
 

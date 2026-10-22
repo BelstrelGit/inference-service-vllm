@@ -1,0 +1,23 @@
+# Exp5 — restart under load, docs/experiments/EXP_006_RESTART_UNDER_LOAD.md. No retries:
+# every request that hits the outage fails, so the failures show what the outage costs.
+# Server: baseline k8s/serving/vllm.yaml. The fault comes from a second terminal:
+#   scripts/fault.sh delete --save results/raw/l4-qwen7b-bf16-restart-v1 --after 150
+# (150 s after the run file appears = 30 s warm-up + 120 s pre-fault baseline).
+# Poisson arrivals, mean 1 req/s; same seed as exp5_restart_retry, so both runs get the same
+# arrival schedule. 512 -> 128 at ~1 req/s: ~30% of the Exp1 maximum (~3.3 req/s), no queue.
+name: exp5_restart_noretry
+series: l4-qwen7b-bf16-restart-v1
+mode: open
+rate: 1.0
+seed: 0
+duration_s: 720
+num_requests: null
+warmup_requests: 10
+warmup_s: 30
+repeats: 1
+input_len: 512
+output_len: 128
+timeout_s: 600
+retries: 0
+metrics_interval_s: 1.0
+max_connections: 1024

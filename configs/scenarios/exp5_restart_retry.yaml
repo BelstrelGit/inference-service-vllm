@@ -1,0 +1,23 @@
+# Exp5 — restart under load, docs/experiments/EXP_006_RESTART_UNDER_LOAD.md. With retries:
+# connection failures and drops before the first token are retried (client/stream.py),
+# exponential backoff 0.5 s x 2^k capped at 8 s, jitter x U(0.5, 1.5); 100 retries cover
+# ~13 min, longer than any expected outage. Streams cut after the first token still fail.
+# Same server, fault command, arrival schedule (seed) and workload as exp5_restart_noretry.
+name: exp5_restart_retry
+series: l4-qwen7b-bf16-restart-v1
+mode: open
+rate: 1.0
+seed: 0
+duration_s: 720
+num_requests: null
+warmup_requests: 10
+warmup_s: 30
+repeats: 1
+input_len: 512
+output_len: 128
+timeout_s: 600
+retries: 100
+backoff_s: 0.5
+backoff_max_s: 8.0
+metrics_interval_s: 1.0
+max_connections: 1024

@@ -175,8 +175,9 @@ results/
 | `status` | str | `ok` / `error` / `timeout` |
 | `http_status` | int \| null | HTTP status code |
 | `error` | str \| null | текст ошибки |
-| `retry_count` | int | число ретраев (только до первого токена: ошибки соединения, HTTP 429/502/503/504; экспоненциальный backoff с jitter) |
+| `retry_count` | int | число ретраев (только до первого токена: соединение не установлено — отказ или `ConnectTimeout`, обрыв до первого токена, HTTP 429/502/503/504; экспоненциальный backoff с jitter, опционально с потолком `backoff_max_s`) |
 | `token_timestamps` | list[float] | время каждого chunk с текстом, для ITL-распределения |
+| `attempts` | list[dict] | журнал попыток: `start` / `end` (perf_counter), `outcome` (`ok`, `http_error`, `connect_error`, `connect_timeout`, `disconnect`, `timeout`, `incomplete`, `error`), `http_status`, `mid_stream` (после первого токена), `error`, `retry_in_s` (запланированная пауза перед следующей попыткой; `null` у последней). В записях до Exp5 пуст |
 
 Реализация: `client/records.py` (схема и формулы), `client/stream.py` (точки замера).
 Все времена для вычисления интервалов — `time.monotonic()`/`perf_counter()`; wall-clock (UTC) пишется отдельно только для привязки к server metrics.
